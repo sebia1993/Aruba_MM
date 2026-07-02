@@ -426,7 +426,8 @@ def _unique_macs(macs: list[str]) -> list[str]:
     seen: set[str] = set()
     unique: list[str] = []
     for mac in macs:
-        normalized = normalize_mac(mac) or mac.strip().casefold()
+        text = mac.strip() if isinstance(mac, str) else ""
+        normalized = normalize_mac(text) or text.casefold()
         if not normalized or normalized in seen:
             continue
         seen.add(normalized)

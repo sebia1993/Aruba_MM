@@ -49,6 +49,15 @@ def test_build_delete_command_rejects_invalid_mac():
         raise AssertionError("build_delete_command should reject invalid MAC values")
 
 
+def test_build_delete_command_rejects_missing_mac_without_attribute_error():
+    try:
+        build_delete_command(None)  # type: ignore[arg-type]
+    except ValueError as exc:
+        assert "MAC" in str(exc)
+    else:
+        raise AssertionError("build_delete_command should reject missing MAC values")
+
+
 def test_build_query_command_rejects_control_characters_in_role():
     try:
         build_query_command("profiling\nshow version")
@@ -518,6 +527,26 @@ def test_delete_macs_records_invalid_mac_without_sending_command():
     assert "MAC" in results[0].error
     assert connection.commands == []
     assert any(event == "delete_unknown" for event, _payload in events)
+
+
+def test_delete_macs_skips_missing_mac_values_without_sending_command():
+    connection = FakeConnection(responses={"no paging": ""})
+    events = []
+    runner = MmCleanupRunner(
+        connection_factory=lambda _config, _timeout: connection,
+        sleep_func=lambda _seconds: None,
+    )
+
+    results = runner._delete_macs(
+        MmConnectionConfig(host="192.0.2.10", username="admin", password="secret"),
+        CleanupSettings(role="profiling", timeout=5, delete_delay_seconds=0),
+        [None, ""],  # type: ignore[list-item]
+        lambda event, payload: events.append((event, payload)),
+    )
+
+    assert results == []
+    assert connection.commands == []
+    assert ("delete_batch_start", {"count": 0}) in events
 
 
 def test_delete_command_exception_is_unknown_without_retry():

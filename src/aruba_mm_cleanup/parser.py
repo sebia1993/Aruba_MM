@@ -16,6 +16,8 @@ _IPV4_PATTERN = re.compile(r"\b(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2
 
 def normalize_mac(value: str) -> str:
     """Return aa:bb:cc:dd:ee:ff form, or an empty string when invalid."""
+    if not isinstance(value, str):
+        return ""
     text = value.strip().strip(",;()[]{}<>")
     hex_chars = re.sub(r"[^0-9A-Fa-f]", "", text)
     if len(hex_chars) != 12 or not re.fullmatch(r"(?i)[0-9a-f]{12}", hex_chars):
