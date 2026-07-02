@@ -983,22 +983,36 @@ class ArubaMmCleanupGui(tk.Tk):
             self.settings_frame.grid()
 
     def _append_history_rows(self, summary) -> None:
-        if not summary.delete_results:
+        delete_results = getattr(summary, "delete_results", None)
+        if not isinstance(delete_results, (list, tuple)) or not delete_results:
             return
-        run_at = summary.started_at.strftime("%Y-%m-%d %H:%M:%S")
-        reappeared_macs = set(summary.reappeared_macs)
-        for item in summary.delete_results:
+        started_at = getattr(summary, "started_at", None)
+        run_at = (
+            started_at.strftime("%Y-%m-%d %H:%M:%S")
+            if callable(getattr(started_at, "strftime", None))
+            else ""
+        )
+        raw_reappeared_macs = getattr(summary, "reappeared_macs", []) or []
+        reappeared_macs = (
+            set(_unique_display_macs([mac for mac in raw_reappeared_macs if isinstance(mac, str)]))
+            if isinstance(raw_reappeared_macs, (list, tuple, set))
+            else set()
+        )
+        for item in delete_results:
+            mac = getattr(item, "mac", "")
+            if not isinstance(mac, str) or not mac:
+                continue
             result, error, tags = self._history_row_display(
                 {
-                    "mac": item.mac,
+                    "mac": mac,
                     "result": "",
-                    "status": item.status,
-                    "success": item.success,
-                    "error": item.error,
-                    "reappeared": item.mac in reappeared_macs or item.status == "reappeared",
+                    "status": getattr(item, "status", ""),
+                    "success": bool(getattr(item, "success", False)),
+                    "error": getattr(item, "error", ""),
+                    "reappeared": mac in reappeared_macs or getattr(item, "status", "") == "reappeared",
                 }
             )
-            self._insert_history_row(run_at, item.mac, result, error, tags=tags)
+            self._insert_history_row(run_at, mac, result, error, tags=tags)
         self._cap_history_rows()
 
     def _cap_history_rows(self) -> None:
