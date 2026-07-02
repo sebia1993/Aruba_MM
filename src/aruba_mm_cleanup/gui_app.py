@@ -1370,12 +1370,12 @@ class ArubaMmCleanupGui(tk.Tk):
             for item in delete_results:
                 if not isinstance(item, dict):
                     continue
-                mac = item.get("mac")
+                mac = safe_get(item, "mac", "")
                 if not isinstance(mac, str) or not mac:
                     continue
                 record = dict(item)
                 record["run_at"] = run_at
-                record["reappeared"] = mac in reappeared or item.get("status") == "reappeared"
+                record["reappeared"] = mac in reappeared or safe_get(item, "status", "") == "reappeared"
                 records.append(record)
         return list(records)
 

@@ -1327,6 +1327,56 @@ def test_history_read_audit_fallback_handles_failing_optional_fields(tmp_path, m
     assert loaded == []
 
 
+def test_history_read_audit_fallback_handles_failing_delete_result_fields(tmp_path, monkeypatch):
+    class FailingMacResult(dict):
+        def get(self, key, default=None):
+            if key == "mac":
+                raise RuntimeError("bad mac")
+            return super().get(key, default)
+
+    class FailingStatusResult(dict):
+        def get(self, key, default=None):
+            if key == "status":
+                raise RuntimeError("bad status")
+            return super().get(key, default)
+
+    output_dir = tmp_path / "outputs"
+    run_dir = output_dir / "20260702_130000_000000"
+    run_dir.mkdir(parents=True)
+    (run_dir / "cleanup_summary.json").write_text("bad audit payload", encoding="utf-8")
+
+    monkeypatch.setattr(
+        gui_app_module.json,
+        "loads",
+        lambda _payload: {
+            "started_at": "2026-07-02T13:00:00",
+            "delete_results": [
+                FailingMacResult({"mac": "aa:bb:cc:00:00:01", "status": "verified_deleted"}),
+                FailingStatusResult({"mac": "aa:bb:cc:00:00:02", "status": "reappeared"}),
+                {"mac": "aa:bb:cc:00:00:03", "status": "verified_deleted"},
+            ],
+        },
+    )
+    app = make_headless_gui()
+
+    loaded = app._read_history_records(output_dir)
+
+    assert loaded == [
+        {
+            "mac": "aa:bb:cc:00:00:02",
+            "status": "reappeared",
+            "run_at": "2026-07-02T13:00:00",
+            "reappeared": False,
+        },
+        {
+            "mac": "aa:bb:cc:00:00:03",
+            "status": "verified_deleted",
+            "run_at": "2026-07-02T13:00:00",
+            "reappeared": False,
+        },
+    ]
+
+
 def test_history_load_ignores_invalid_reappeared_macs_type(tmp_path):
     output_dir = tmp_path / "outputs"
     run_dir = output_dir / "20260702_130000_000000"
