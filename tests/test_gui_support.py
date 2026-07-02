@@ -557,6 +557,37 @@ def test_history_load_ignores_invalid_reappeared_macs_type(tmp_path):
     assert rows == [("2026-07-02 13:00:00", "aa:bb:cc:00:00:01", "삭제 완료", "")]
 
 
+def test_history_load_ignores_invalid_reappeared_mac_items(tmp_path):
+    output_dir = tmp_path / "outputs"
+    run_dir = output_dir / "20260702_130000_000000"
+    run_dir.mkdir(parents=True)
+    (run_dir / "cleanup_summary.json").write_text(
+        json.dumps(
+            {
+                "started_at": "2026-07-02T13:00:00",
+                "reappeared_macs": [["aa:bb:cc:00:00:01"]],
+                "delete_results": [
+                    {
+                        "mac": "aa:bb:cc:00:00:01",
+                        "status": "verified_deleted",
+                        "success": True,
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    app = make_headless_gui()
+    app.history_table = FakeHistoryTable()
+    app.history_row_counter = 0
+    app.loaded_history_dir = None
+
+    app._load_history_from_output_dir(output_dir)
+
+    rows = [app.history_table.rows[item]["values"] for item in app.history_table.get_children()]
+    assert rows == [("2026-07-02 13:00:00", "aa:bb:cc:00:00:01", "삭제 완료", "")]
+
+
 def test_history_load_ignores_invalid_delete_results_type(tmp_path):
     output_dir = tmp_path / "outputs"
     run_dir = output_dir / "20260702_130000_000000"

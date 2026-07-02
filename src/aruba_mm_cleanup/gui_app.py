@@ -1052,7 +1052,7 @@ class ArubaMmCleanupGui(tk.Tk):
             reappeared_macs = audit.get("reappeared_macs") or []
             if not isinstance(reappeared_macs, (list, tuple, set)):
                 reappeared_macs = []
-            reappeared = set(reappeared_macs)
+            reappeared = {mac for mac in reappeared_macs if isinstance(mac, str)}
             delete_results = audit.get("delete_results") or []
             if not isinstance(delete_results, (list, tuple)):
                 delete_results = []
