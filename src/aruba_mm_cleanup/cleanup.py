@@ -306,12 +306,18 @@ class MmCleanupRunner:
         except Exception:
             return False
         while remaining > 0:
-            if should_cancel():
+            try:
+                if should_cancel():
+                    return False
+            except Exception:
                 return False
             self._emit(progress_callback, "countdown", remaining=remaining)
             self.sleep_func(1)
             remaining -= 1
-        if should_cancel():
+        try:
+            if should_cancel():
+                return False
+        except Exception:
             return False
         self._emit(progress_callback, "countdown", remaining=0)
         return True

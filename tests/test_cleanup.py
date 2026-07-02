@@ -437,6 +437,36 @@ def test_run_once_can_cancel_during_countdown(tmp_path):
     assert query_conn.disconnected is True
 
 
+def test_run_once_cancels_when_cancel_check_fails_during_countdown(tmp_path):
+    first_query = "10.1.1.10 aa:bb:cc:00:00:01 user-a profiling"
+    query_conn = FakeConnection(
+        responses={"no paging": "", "show global-user-table list role profiling": [first_query]}
+    )
+    events = []
+    runner = MmCleanupRunner(
+        connection_factory=lambda _config, _timeout: query_conn,
+        sleep_func=lambda _seconds: None,
+    )
+
+    def failing_cancel_check():
+        raise RuntimeError("cancel check failed")
+
+    summary = runner.run_once(
+        MmConnectionConfig(host="192.0.2.10", username="admin", password="secret"),
+        CleanupSettings(role="profiling", timeout=5, delete_delay_seconds=3),
+        output_dir=tmp_path,
+        progress_callback=lambda event, payload: events.append((event, payload)),
+        should_cancel=failing_cancel_check,
+    )
+
+    assert summary.canceled is True
+    assert summary.error == ""
+    assert summary.remaining_count == 1
+    assert summary.delete_results == []
+    assert "aaa user delete mac aa:bb:cc:00:00:01" not in query_conn.commands
+    assert any(event == "delete_canceled" and payload["count"] == 1 for event, payload in events)
+
+
 def test_run_once_can_cancel_during_delete_loop_before_next_mac(tmp_path):
     first_query = "10.1.1.10 aa:bb:cc:00:00:01 user-a profiling\n10.1.1.11 aa:bb:cc:00:00:02 user-b profiling"
     connection = FakeConnection(
