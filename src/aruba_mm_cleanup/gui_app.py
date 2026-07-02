@@ -26,6 +26,7 @@ MAX_HISTORY_ROWS = 500
 MAX_LOG_LINES = 1000
 HISTORY_FILE_NAME = "deletion_history.jsonl"
 SHUTDOWN_GRACE_MS = 250
+TYPE_NA_MESSAGE = "Type=N/A: 관리자 직접 장비 지정 필요"
 
 BG = "#f4f4f4"
 PANEL = "#ffffff"
@@ -361,7 +362,7 @@ class ArubaMmCleanupGui(tk.Tk):
             "status": "상태",
             "queried_at": "조회시각",
             "deleted_at": "삭제시각",
-            "error": "오류",
+            "error": "메시지",
         }
         widths = {"mac": 150, "status": 120, "queried_at": 150, "deleted_at": 150, "error": 360}
         for key in columns:
@@ -737,9 +738,12 @@ class ArubaMmCleanupGui(tk.Tk):
             self._log(f"QUERY: {payload.get('command')}")
         elif event == "query_done":
             macs = list(payload.get("macs") or [])
+            type_na_macs = [str(mac) for mac in payload.get("type_na_macs") or []]
             self.counter_vars["queried"].set(str(len(_unique_display_macs(macs))))
-            self._replace_table(macs, "삭제 대상")
+            self._replace_table(macs, "삭제 대상", type_na_macs=type_na_macs)
             self._log(f"QUERY DONE: {payload.get('count', 0)} MAC(s)")
+            for mac in _unique_display_macs(type_na_macs):
+                self._log(f"TYPE N/A: {mac} - 관리자 직접 장비 지정 필요")
         elif event == "countdown":
             remaining = int(payload.get("remaining", 0))
             self._set_timer(f"{remaining}s", "삭제 시작 대기" if remaining > 0 else "삭제 시작")
@@ -804,11 +808,13 @@ class ArubaMmCleanupGui(tk.Tk):
             self._log(f"HISTORY WARNING: {summary.history_error}")
         self._append_history_rows(summary)
 
-    def _replace_table(self, macs: list[str], status: str) -> None:
+    def _replace_table(self, macs: list[str], status: str, *, type_na_macs: Optional[list[str]] = None) -> None:
         self.table.delete(*self.table.get_children())
         now = time.strftime("%Y-%m-%d %H:%M:%S")
+        type_na_set = set(_unique_display_macs(type_na_macs or []))
         for mac in _unique_display_macs(macs):
-            self.table.insert("", "end", iid=mac, values=(mac, status, now, "", ""))
+            message = TYPE_NA_MESSAGE if mac in type_na_set else ""
+            self.table.insert("", "end", iid=mac, values=(mac, status, now, "", message))
 
     def _set_row_status(self, mac: str, status: str, error: str) -> None:
         if not mac or not self.table.exists(mac):
@@ -817,7 +823,7 @@ class ArubaMmCleanupGui(tk.Tk):
         values[1] = status
         if status in {"삭제 완료", "삭제 실패", "확인 필요", "재조회됨"}:
             values[3] = time.strftime("%Y-%m-%d %H:%M:%S")
-        values[4] = error
+        values[4] = _merge_status_message(str(values[4] or ""), error)
         self.table.item(mac, values=values)
         self.table.item(mac, tags=("reappeared",) if status == "재조회됨" else ())
 
@@ -1003,6 +1009,16 @@ def _unique_display_macs(macs: list[str]) -> list[str]:
         seen.add(normalized)
         unique.append(normalized)
     return unique
+
+
+def _merge_status_message(existing: str, update: str) -> str:
+    has_type_na_message = TYPE_NA_MESSAGE in existing
+    update = update.strip()
+    if has_type_na_message and update:
+        return f"{TYPE_NA_MESSAGE} | {update}"
+    if has_type_na_message:
+        return TYPE_NA_MESSAGE
+    return update
 
 
 def main() -> int:

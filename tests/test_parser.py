@@ -32,6 +32,28 @@ IP              MAC Address          User          Role        VLAN  BSSID
     assert entries[0].username == "user-a"
 
 
+def test_parse_global_user_table_records_type_na_from_header():
+    header = f"{'IP':<16}{'MAC Address':<21}{'User':<14}{'Role':<12}{'Type':<8}{'BSSID'}"
+    output = "\n".join(
+        [
+            header,
+            f"{'10.1.1.10':<16}{'aa:bb:cc:00:00:01':<21}{'user-a':<14}{'profiling':<12}{'N/A':<8}{'11:22:33:44:55:66'}",
+            f"{'10.1.1.11':<16}{'aa:bb:cc:00:00:02':<21}{'user-b':<14}{'profiling':<12}{'user':<8}{'22:33:44:55:66:77'}",
+        ]
+    )
+
+    result = parse_global_user_table_explained(output, role_filter="profiling")
+
+    assert [entry.mac for entry in result.entries] == ["aa:bb:cc:00:00:01", "aa:bb:cc:00:00:02"]
+    assert result.entries[0].user_type == "N/A"
+    assert result.entries[0].type_na is True
+    assert result.entries[1].user_type == "user"
+    assert result.entries[1].type_na is False
+    selected = {item.mac: item for item in result.decisions if item.action == "selected"}
+    assert selected["aa:bb:cc:00:00:01"].type_na is True
+    assert selected["aa:bb:cc:00:00:01"].user_type == "N/A"
+
+
 def test_parse_global_user_table_deduplicates_user_macs():
     output = """
 10.1.1.10 aa:bb:cc:00:00:01 user-a profiling 11:22:33:44:55:66

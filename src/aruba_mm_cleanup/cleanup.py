@@ -79,9 +79,12 @@ class MmCleanupRunner:
                     "reason": item.reason,
                     "mac": item.mac,
                     "role": item.role,
+                    "user_type": item.user_type,
+                    "type_na": item.type_na,
                 }
                 for item in parsed.decisions
             ],
+            type_na_macs=[entry.mac for entry in parsed.entries if entry.type_na],
         )
         return QueryResult(command=command, entries=parsed.entries, parse_decisions=parsed.decisions)
 

@@ -37,8 +37,14 @@ def parse_global_user_table_explained(output: str, *, role_filter: str = "profil
     role = role_filter.strip().casefold()
     entries: dict[str, UserEntry] = {}
     decisions: list[ParseDecision] = []
+    type_spans: list[tuple[int, int]] = []
     for line_number, line in enumerate(output.splitlines(), start=1):
         stripped = line.strip()
+        detected_type_spans = _type_column_spans(line)
+        if detected_type_spans:
+            type_spans = detected_type_spans
+            decisions.append(ParseDecision(line_number, "ignored", "header_or_command"))
+            continue
         skip_reason = _skip_reason(stripped)
         if skip_reason:
             if stripped:
@@ -47,8 +53,10 @@ def parse_global_user_table_explained(output: str, *, role_filter: str = "profil
 
         tokens = stripped.split()
         mac_index, mac, mac_reason = _target_mac_from_tokens(tokens, role_filter=role)
+        user_type = _extract_type_value(line, type_spans)
+        type_na = user_type.strip().casefold() == "n/a"
         if not mac:
-            decisions.append(ParseDecision(line_number, "ignored", mac_reason or "no_user_mac"))
+            decisions.append(ParseDecision(line_number, "ignored", mac_reason or "no_user_mac", user_type=user_type, type_na=type_na))
             continue
         role_matches, role_reason = _row_matches_role(tokens, role, mac_index)
         if role and not role_matches:
@@ -61,20 +69,44 @@ def parse_global_user_table_explained(output: str, *, role_filter: str = "profil
                     role_reason,
                     mac=mac,
                     role=_probable_role_token(tokens, mac_index) or _extract_role(tokens, role),
+                    user_type=user_type,
+                    type_na=type_na,
                 )
             )
             continue
         if mac in entries:
-            decisions.append(ParseDecision(line_number, "ignored", "duplicate_user_mac", mac=mac, role=_extract_role(tokens, role)))
+            decisions.append(
+                ParseDecision(
+                    line_number,
+                    "ignored",
+                    "duplicate_user_mac",
+                    mac=mac,
+                    role=_extract_role(tokens, role),
+                    user_type=user_type,
+                    type_na=type_na,
+                )
+            )
             continue
         entry = UserEntry(
             mac=mac,
             role=_extract_role(tokens, role),
             username=_extract_username(tokens, mac_index),
             ip_address=_extract_ip(tokens),
+            user_type=user_type,
+            type_na=type_na,
         )
         entries[mac] = entry
-        decisions.append(ParseDecision(line_number, "selected", mac_reason or role_reason or "selected", mac=mac, role=entry.role))
+        decisions.append(
+            ParseDecision(
+                line_number,
+                "selected",
+                mac_reason or role_reason or "selected",
+                mac=mac,
+                role=entry.role,
+                user_type=user_type,
+                type_na=type_na,
+            )
+        )
     return ParseResult(entries=list(entries.values()), decisions=decisions)
 
 
@@ -191,4 +223,32 @@ def _extract_ip(tokens: list[str]) -> str:
     for token in tokens[:6]:
         if _IPV4_PATTERN.fullmatch(token):
             return token
+    return ""
+
+
+def _type_column_spans(line: str) -> list[tuple[int, int]]:
+    columns = _fixed_width_columns(line)
+    spans: list[tuple[int, int]] = []
+    for index, (label, start) in enumerate(columns):
+        if label.strip().casefold() != "type":
+            continue
+        end = columns[index + 1][1] if index + 1 < len(columns) else len(line)
+        spans.append((start, end))
+    return spans
+
+
+def _fixed_width_columns(line: str) -> list[tuple[str, int]]:
+    columns: list[tuple[str, int]] = []
+    for match in re.finditer(r"\S(?:.*?\S)?(?=\s{2,}|$)", line.rstrip()):
+        columns.append((match.group(0).strip(), match.start()))
+    return columns
+
+
+def _extract_type_value(line: str, type_spans: list[tuple[int, int]]) -> str:
+    for start, end in type_spans:
+        if start >= len(line):
+            continue
+        value = line[start:end].strip()
+        if value:
+            return value
     return ""

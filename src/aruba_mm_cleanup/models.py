@@ -31,6 +31,8 @@ class UserEntry:
     role: str = ""
     username: str = ""
     ip_address: str = ""
+    user_type: str = ""
+    type_na: bool = False
 
 
 @dataclass(frozen=True)
@@ -40,6 +42,8 @@ class ParseDecision:
     reason: str
     mac: str = ""
     role: str = ""
+    user_type: str = ""
+    type_na: bool = False
 
 
 @dataclass(frozen=True)
@@ -115,6 +119,8 @@ class CleanupRunSummary:
                     "reason": item.reason,
                     "mac": item.mac,
                     "role": item.role,
+                    "user_type": item.user_type,
+                    "type_na": item.type_na,
                 }
                 for item in self.query_parse_decisions
             ],
@@ -125,6 +131,8 @@ class CleanupRunSummary:
                     "reason": item.reason,
                     "mac": item.mac,
                     "role": item.role,
+                    "user_type": item.user_type,
+                    "type_na": item.type_na,
                 }
                 for item in self.verify_parse_decisions
             ],

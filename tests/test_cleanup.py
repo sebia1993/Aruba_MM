@@ -135,6 +135,44 @@ def test_run_once_zero_delete_delay_starts_delete_after_countdown_zero(tmp_path)
     assert "aaa user delete mac aa:bb:cc:00:00:01" in connection.commands
 
 
+def test_run_once_reports_type_na_macs_without_blocking_delete(tmp_path):
+    header = f"{'IP':<16}{'MAC Address':<21}{'User':<14}{'Role':<12}{'Type':<8}{'BSSID'}"
+    first_query = "\n".join(
+        [
+            header,
+            f"{'10.1.1.10':<16}{'aa:bb:cc:00:00:01':<21}{'user-a':<14}{'profiling':<12}{'N/A':<8}{'11:22:33:44:55:66'}",
+        ]
+    )
+    connection = FakeConnection(
+        responses={
+            "no paging": "",
+            "show global-user-table list role profiling": [first_query, ""],
+            "aaa user delete mac aa:bb:cc:00:00:01": "User deleted",
+        }
+    )
+    events = []
+    runner = MmCleanupRunner(
+        connection_factory=lambda _config, _timeout: connection,
+        sleep_func=lambda _seconds: None,
+    )
+
+    summary = runner.run_once(
+        MmConnectionConfig(host="192.0.2.10", username="admin", password="secret"),
+        CleanupSettings(role="profiling", timeout=5, delete_delay_seconds=0),
+        output_dir=tmp_path,
+        progress_callback=lambda event, payload: events.append((event, payload)),
+    )
+
+    assert "aaa user delete mac aa:bb:cc:00:00:01" in connection.commands
+    query_done_payload = next(payload for event, payload in events if event == "query_done" and payload["macs"])
+    assert query_done_payload["type_na_macs"] == ["aa:bb:cc:00:00:01"]
+    assert any(item.mac == "aa:bb:cc:00:00:01" and item.type_na for item in summary.query_parse_decisions)
+    audit = json.loads(summary.audit_path.read_text(encoding="utf-8"))
+    selected = [item for item in audit["query_parse_decisions"] if item["action"] == "selected"]
+    assert selected[0]["user_type"] == "N/A"
+    assert selected[0]["type_na"] is True
+
+
 def test_run_once_flags_successfully_deleted_mac_that_reappears(tmp_path):
     first_query = "10.1.1.10 aa:bb:cc:00:00:01 user-a profiling\n10.1.1.11 aa:bb:cc:00:00:02 user-b profiling"
     verify_query = "10.1.1.10 aa:bb:cc:00:00:01 user-a profiling\n10.1.1.11 aa:bb:cc:00:00:02 user-b profiling"

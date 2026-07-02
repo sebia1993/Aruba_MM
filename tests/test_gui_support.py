@@ -22,6 +22,7 @@ from aruba_mm_cleanup.gui_app import (
     MIN_INTERVAL_SECONDS,
     SHUTDOWN_GRACE_MS,
     TEXT,
+    TYPE_NA_MESSAGE,
     ArubaMmCleanupGui,
 )
 
@@ -63,6 +64,19 @@ class FakeHistoryTable:
 
     def get_children(self):
         return tuple(self.order)
+
+
+class FakeTreeTable(FakeHistoryTable):
+    def exists(self, item):
+        return item in self.rows
+
+    def item(self, item, option=None, **kwargs):
+        if kwargs:
+            self.rows[item].update(kwargs)
+            return None
+        if option:
+            return self.rows[item][option]
+        return self.rows[item]
 
 
 class FakeLogText:
@@ -207,7 +221,7 @@ def test_delete_progress_events_update_rows_without_confirmed_delete_count():
 def test_query_done_counts_unique_display_macs():
     app = make_headless_gui()
     replaced = []
-    app._replace_table = lambda macs, status: replaced.append((macs, status))
+    app._replace_table = lambda macs, status, **kwargs: replaced.append((macs, status, kwargs))
 
     app._handle_progress(
         "query_done",
@@ -219,8 +233,43 @@ def test_query_done_counts_unique_display_macs():
 
     assert app.counter_vars["queried"].get() == "2"
     assert replaced == [
-        (["aa-bb-cc-00-00-01", "aa:bb:cc:00:00:01", "aa:bb:cc:00:00:02"], "삭제 대상")
+        (["aa-bb-cc-00-00-01", "aa:bb:cc:00:00:01", "aa:bb:cc:00:00:02"], "삭제 대상", {"type_na_macs": []})
     ]
+
+
+def test_query_done_marks_type_na_rows_and_logs_admin_guidance():
+    app = make_headless_gui()
+    app.table = FakeTreeTable()
+
+    app._handle_progress(
+        "query_done",
+        {
+            "count": 2,
+            "macs": ["aa:bb:cc:00:00:01", "aa:bb:cc:00:00:02"],
+            "type_na_macs": ["aa:bb:cc:00:00:02"],
+        },
+    )
+
+    assert app.table.rows["aa:bb:cc:00:00:01"]["values"][4] == ""
+    assert app.table.rows["aa:bb:cc:00:00:02"]["values"][4] == TYPE_NA_MESSAGE
+    assert "TYPE N/A: aa:bb:cc:00:00:02 - 관리자 직접 장비 지정 필요" in app.logs
+
+
+def test_type_na_message_survives_delete_status_updates():
+    app = make_headless_gui()
+    app.table = FakeTreeTable()
+    app.table.insert(
+        "",
+        "end",
+        iid="aa:bb:cc:00:00:01",
+        values=("aa:bb:cc:00:00:01", "삭제 대상", "2026-07-02 13:00:00", "", TYPE_NA_MESSAGE),
+    )
+
+    ArubaMmCleanupGui._set_row_status(app, "aa:bb:cc:00:00:01", "삭제 완료", "")
+    assert app.table.rows["aa:bb:cc:00:00:01"]["values"][4] == TYPE_NA_MESSAGE
+
+    ArubaMmCleanupGui._set_row_status(app, "aa:bb:cc:00:00:01", "확인 필요", "timeout")
+    assert app.table.rows["aa:bb:cc:00:00:01"]["values"][4] == f"{TYPE_NA_MESSAGE} | timeout"
 
 
 def test_running_state_resets_current_run_counters():
