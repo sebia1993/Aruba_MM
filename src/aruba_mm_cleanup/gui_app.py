@@ -844,7 +844,7 @@ class ArubaMmCleanupGui(tk.Tk):
 
     def _handle_summary(self, summary) -> None:
         self._ensure_cumulative_counters()
-        target_count = len(getattr(summary, "target_macs", []) or []) or summary.queried_count
+        target_count = len(getattr(summary, "target_macs", []) or []) or getattr(summary, "queried_count", 0)
         if not self.current_run_query_counted:
             self._count_current_query(target_count)
         if not self.current_run_delete_counted:

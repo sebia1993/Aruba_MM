@@ -785,6 +785,28 @@ def test_summary_does_not_double_count_query_progress():
     assert app.counter_vars["deleted"].get() == "4"
 
 
+def test_summary_handles_missing_queried_count_as_zero():
+    app = make_headless_gui()
+    summary = SimpleNamespace(
+        target_macs=[],
+        delete_success_count=0,
+        reappeared_count=0,
+        verification_skipped=False,
+        error="",
+        canceled=False,
+        reappeared_macs=[],
+        audit_path=None,
+        audit_error="",
+        history_error="",
+    )
+
+    app._handle_summary(summary)
+
+    assert app.counter_vars["queried"].get() == "7"
+    assert app.counter_vars["deleted"].get() == "3"
+    assert app.status_var.get() == "완료"
+
+
 @pytest.mark.parametrize(
     ("error", "canceled", "verification_skipped"),
     [("boom", False, False), ("", True, False), ("", False, True)],
