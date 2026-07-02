@@ -278,7 +278,7 @@ class MmCleanupRunner:
                     error=error,
                 )
             except Exception as exc:
-                error = f"확인 필요: 삭제 명령 응답 실패 - {exc}"
+                error = f"확인 필요: 삭제 명령 응답 실패 - {_exception_text(exc)}"
                 results.append(
                     DeleteResult(
                         mac=mac,
@@ -568,3 +568,7 @@ def _history_result_label(item: DeleteResult) -> str:
     if item.success:
         return "삭제 완료"
     return "삭제 실패"
+
+
+def _exception_text(exc: BaseException) -> str:
+    return _safe_text(exc) or exc.__class__.__name__

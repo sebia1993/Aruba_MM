@@ -929,6 +929,45 @@ def test_delete_command_exception_is_unknown_without_retry():
     assert any(event == "delete_unknown" for event, _payload in events)
 
 
+def test_delete_command_exception_with_unprintable_error_is_unknown_without_retry():
+    class BadErrorText(Exception):
+        def __str__(self):
+            raise RuntimeError("bad error text")
+
+        def __repr__(self):
+            raise RuntimeError("bad error repr")
+
+    failed_command = "aaa user delete mac aa:bb:cc:00:00:01"
+    next_command = "aaa user delete mac aa:bb:cc:00:00:02"
+    stale_connection = FakeConnection(responses={"no paging": ""}, failures={failed_command: BadErrorText()})
+    fresh_connection = FakeConnection(responses={"no paging": "", next_command: "User deleted"})
+    connections = [stale_connection, fresh_connection]
+    events = []
+    runner = MmCleanupRunner(
+        connection_factory=lambda _config, _timeout: connections.pop(0),
+        sleep_func=lambda _seconds: None,
+    )
+
+    results = runner._delete_macs(
+        MmConnectionConfig(host="192.0.2.10", username="admin", password="secret"),
+        CleanupSettings(role="profiling", timeout=5, delete_delay_seconds=0),
+        ["aa:bb:cc:00:00:01", "aa:bb:cc:00:00:02"],
+        lambda event, payload: events.append((event, payload)),
+    )
+
+    assert [item.status for item in results] == ["unknown", "deleted"]
+    assert results[0].error == "확인 필요: 삭제 명령 응답 실패 - BadErrorText"
+    assert stale_connection.commands.count(failed_command) == 1
+    assert stale_connection.disconnected is True
+    assert fresh_connection.commands == ["no paging", next_command]
+    assert connections == []
+    assert not any(event == "session_reconnect_start" for event, _payload in events)
+    assert any(
+        event == "delete_unknown" and payload["error"] == "확인 필요: 삭제 명령 응답 실패 - BadErrorText"
+        for event, payload in events
+    )
+
+
 def test_delete_command_exception_closes_session_before_next_mac_without_retry():
     failed_command = "aaa user delete mac aa:bb:cc:00:00:01"
     next_command = "aaa user delete mac aa:bb:cc:00:00:02"
