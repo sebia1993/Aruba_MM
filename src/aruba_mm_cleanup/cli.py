@@ -25,11 +25,19 @@ def main(argv: Optional[list[str]] = None) -> int:
     if args.port < 1 or args.port > 65535:
         parser.error("--port must be between 1 and 65535")
 
-    password = args.password if args.password is not None else getpass.getpass("Password: ")
+    try:
+        password = args.password if args.password is not None else getpass.getpass("Password: ")
+    except (EOFError, KeyboardInterrupt):
+        print("Canceled before password input.")
+        return 1
     if not args.yes:
-        answer = input(
-            f"Query role '{args.role}' on {args.host}, then auto-delete after {max(0, args.delay)}s countdown. Continue? [y/N] "
-        )
+        try:
+            answer = input(
+                f"Query role '{args.role}' on {args.host}, then auto-delete after {max(0, args.delay)}s countdown. Continue? [y/N] "
+            )
+        except (EOFError, KeyboardInterrupt):
+            print("Canceled before query.")
+            return 1
         if answer.strip().casefold() not in {"y", "yes"}:
             print("Canceled before query.")
             return 1

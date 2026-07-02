@@ -5,6 +5,8 @@ import configparser
 import re
 from pathlib import Path
 
+from aruba_mm_cleanup.cli import main as cli_main
+
 
 def test_release_zip_verifier_checks_required_files(tmp_path):
     repo_root = Path(__file__).parents[1]
@@ -71,6 +73,47 @@ def test_cli_rejects_out_of_range_port_before_connecting():
     output = completed.stdout + completed.stderr
     assert completed.returncode == 2, output
     assert "--port must be between 1 and 65535" in output
+
+
+def test_cli_treats_missing_confirmation_input_as_cancel(monkeypatch, capsys):
+    def raise_eof(_prompt):
+        raise EOFError
+
+    monkeypatch.setattr("builtins.input", raise_eof)
+
+    result = cli_main(
+        [
+            "--host",
+            "192.0.2.10",
+            "--username",
+            "admin",
+            "--password",
+            "secret",
+        ]
+    )
+
+    assert result == 1
+    assert "Canceled before query." in capsys.readouterr().out
+
+
+def test_cli_treats_missing_password_input_as_cancel(monkeypatch, capsys):
+    def raise_eof(_prompt):
+        raise EOFError
+
+    monkeypatch.setattr("aruba_mm_cleanup.cli.getpass.getpass", raise_eof)
+
+    result = cli_main(
+        [
+            "--host",
+            "192.0.2.10",
+            "--username",
+            "admin",
+            "--yes",
+        ]
+    )
+
+    assert result == 1
+    assert "Canceled before password input." in capsys.readouterr().out
 
 
 def test_windows_build_and_docs_reference_current_exe_names():
