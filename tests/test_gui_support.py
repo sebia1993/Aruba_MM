@@ -350,6 +350,15 @@ def test_query_done_marks_type_na_rows_and_logs_admin_guidance():
     assert "TYPE N/A: aa:bb:cc:00:00:02 - 관리자 직접 장비 지정 필요" in app.logs
 
 
+def test_reappeared_macs_ignores_string_payload_without_character_rows():
+    app = make_headless_gui()
+
+    app._handle_progress("reappeared_macs", {"macs": "aa:bb:cc:00:00:01"})
+
+    assert app.reappeared_rows == [[]]
+    assert not any(message.startswith("REAPPEARED:") for message in app.logs)
+
+
 def test_type_na_message_survives_delete_status_updates():
     app = make_headless_gui()
     app.table = FakeTreeTable()

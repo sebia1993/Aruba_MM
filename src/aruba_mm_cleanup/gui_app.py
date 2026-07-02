@@ -822,7 +822,8 @@ class ArubaMmCleanupGui(tk.Tk):
             self._set_row_status(str(payload.get("mac")), "확인 필요", str(payload.get("error") or ""))
             self._log(f"DELETE UNKNOWN: {payload.get('mac')} | {payload.get('error')}")
         elif event == "reappeared_macs":
-            macs = [str(mac) for mac in payload.get("macs") or []]
+            raw_macs = payload.get("macs")
+            macs = [str(mac) for mac in raw_macs] if isinstance(raw_macs, (list, tuple, set)) else []
             self.status_var.set("삭제 MAC 재조회됨")
             self._mark_reappeared_rows(macs)
             for mac in macs:
