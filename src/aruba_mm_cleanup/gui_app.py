@@ -750,7 +750,7 @@ class ArubaMmCleanupGui(tk.Tk):
             role = self.role_var.get().strip() or DEFAULT_ROLE
             enable_password = self.enable_password_var.get()
             output_dir_text = self.output_dir_var.get().strip()
-        except tk.TclError as exc:
+        except (AttributeError, tk.TclError) as exc:
             raise ValueError("입력값을 읽을 수 없습니다.") from exc
         if not host:
             raise ValueError("MM IP/Host를 입력하세요.")
@@ -790,7 +790,7 @@ class ArubaMmCleanupGui(tk.Tk):
     def _read_interval(self) -> int:
         try:
             interval = int(self.interval_var.get().strip() or str(DEFAULT_INTERVAL_SECONDS))
-        except tk.TclError as exc:
+        except (AttributeError, tk.TclError) as exc:
             raise ValueError("주기(초)는 1 이상 숫자로 입력하세요.") from exc
         except ValueError as exc:
             raise ValueError("주기(초)는 1 이상 숫자로 입력하세요.") from exc
