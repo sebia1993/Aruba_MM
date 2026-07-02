@@ -1031,7 +1031,7 @@ class ArubaMmCleanupGui(tk.Tk):
                             record = json.loads(line)
                         except json.JSONDecodeError:
                             continue
-                        if isinstance(record, dict) and record.get("mac"):
+                        if isinstance(record, dict) and isinstance(record.get("mac"), str) and record.get("mac"):
                             records.append(record)
             except (OSError, UnicodeError):
                 return records

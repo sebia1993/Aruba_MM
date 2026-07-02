@@ -468,6 +468,33 @@ def test_history_load_restores_jsonl_rows(tmp_path):
     ]
 
 
+def test_history_load_ignores_non_string_jsonl_mac(tmp_path):
+    output_dir = tmp_path / "outputs"
+    output_dir.mkdir()
+    history_path = output_dir / HISTORY_FILE_NAME
+    history_path.write_text(
+        json.dumps(
+            {
+                "run_at": "2026-07-02T13:00:00",
+                "mac": ["aa:bb:cc:00:00:01"],
+                "result": "삭제 완료",
+                "status": "verified_deleted",
+                "success": True,
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    app = make_headless_gui()
+    app.history_table = FakeHistoryTable()
+    app.history_row_counter = 0
+    app.loaded_history_dir = None
+
+    app._load_history_from_output_dir(output_dir)
+
+    assert app.history_table.get_children() == ()
+
+
 def test_history_load_ignores_unreadable_jsonl_path(tmp_path):
     output_dir = tmp_path / "outputs"
     output_dir.mkdir()
