@@ -1039,7 +1039,10 @@ class ArubaMmCleanupGui(tk.Tk):
             return
         overflow = line_count - MAX_LOG_LINES
         if overflow > 0:
-            self.log_text.delete("1.0", f"{overflow + 1}.0")
+            try:
+                self.log_text.delete("1.0", f"{overflow + 1}.0")
+            except tk.TclError:
+                return
 
     def clear_log(self) -> None:
         try:

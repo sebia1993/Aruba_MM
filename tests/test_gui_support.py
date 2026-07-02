@@ -842,6 +842,17 @@ def test_log_keeps_message_when_line_index_is_unexpected():
     assert app.log_text.state == "disabled"
 
 
+def test_log_stays_disabled_when_cap_delete_fails():
+    app = make_headless_gui()
+    app.log_text = DeleteFailingLogText()
+    app.log_text.lines = [f"line {index}" for index in range(MAX_LOG_LINES + 1)]
+
+    ArubaMmCleanupGui._log(app, "line still recorded")
+
+    assert app.log_text.lines[-1].endswith("line still recorded")
+    assert app.log_text.state == "disabled"
+
+
 def test_clear_log_restores_disabled_state_when_delete_fails():
     app = make_headless_gui()
     app.log_text = DeleteFailingLogText()
