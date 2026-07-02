@@ -1021,6 +1021,27 @@ def test_summary_writes_tolerate_malformed_started_at(tmp_path):
     assert history[-1]["run_at"] == "bad-started-at"
 
 
+def test_summary_run_dir_tolerates_unstrippable_started_at_text(tmp_path):
+    class BadPathText(str):
+        def strip(self, *_args, **_kwargs):
+            raise RuntimeError("bad strip")
+
+    class BadStartedAt:
+        def isoformat(self, *_args, **_kwargs):
+            return BadPathText("bad-started-at")
+
+        def strftime(self, _format):
+            raise TypeError("bad strftime")
+
+    summary = CleanupRunSummary(started_at=datetime(2026, 7, 2, 13, 0, 0), role="profiling")
+    summary.started_at = BadStartedAt()  # type: ignore[assignment]
+
+    path = write_audit_summary(summary, output_dir=tmp_path, host="192.0.2.10")
+
+    assert path.parent.name == "unknown-started-at"
+    assert path.exists()
+
+
 def test_audit_summary_tolerates_invalid_list_containers(tmp_path):
     summary = CleanupRunSummary(started_at=datetime(2026, 7, 2, 13, 0, 0), role="profiling")
     summary.target_macs = "aa:bb:cc:00:00:01"  # type: ignore[assignment]

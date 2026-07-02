@@ -423,7 +423,10 @@ def _summary_run_dir_name(summary: CleanupRunSummary) -> str:
 
 
 def _safe_path_fragment(value: str) -> str:
-    text = "".join(char if char.isalnum() or char in {"-", "_", "."} else "_" for char in value.strip())
+    try:
+        text = "".join(char if char.isalnum() or char in {"-", "_", "."} else "_" for char in value.strip())
+    except Exception:
+        text = ""
     return text[:80] or "unknown-started-at"
 
 
