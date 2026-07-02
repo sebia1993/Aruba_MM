@@ -118,7 +118,7 @@ class MmSession:
         try:
             send_mm_command(self._connection, "no paging", timeout=settings.timeout)
         except Exception as exc:
-            self._emit(progress_callback, "warning", message=f"no paging failed: {exc}")
+            self._emit(progress_callback, "warning", message=f"no paging failed: {_exception_text(exc)}")
 
     @staticmethod
     def _emit(callback: Optional[ProgressCallback], event: str, **payload: object) -> None:

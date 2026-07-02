@@ -194,6 +194,33 @@ def test_session_rejects_invalid_connection_object_and_clears_state():
     assert not any(event == "connect_done" for event, _payload in events)
 
 
+def test_session_no_paging_unprintable_failure_warns_and_allows_command():
+    class BadErrorText(Exception):
+        def __str__(self):
+            raise RuntimeError("bad error text")
+
+        def __repr__(self):
+            raise RuntimeError("bad error repr")
+
+    command = "show version"
+    connection = FakeConnection(responses={command: "ok"}, failures={"no paging": BadErrorText()})
+    events = []
+    session = MmSession(connection_factory=lambda _config, _timeout: connection)
+    config = MmConnectionConfig(host="192.0.2.10", username="admin", password="secret")
+    settings = CleanupSettings(role="profiling", timeout=5, delete_delay_seconds=0)
+
+    assert session.run_command(
+        config,
+        settings,
+        command,
+        progress_callback=lambda event, payload: events.append((event, payload)),
+    ) == "ok"
+
+    assert session.is_connected is True
+    assert connection.commands == ["no paging", command]
+    assert ("warning", {"message": "no paging failed: BadErrorText"}) in events
+
+
 def test_run_once_deletes_snapshot_and_verifies_remaining(tmp_path):
     first_query = "10.1.1.10 aa:bb:cc:00:00:01 user-a profiling\n10.1.1.11 aa:bb:cc:00:00:02 user-b profiling"
     verify_query = ""
