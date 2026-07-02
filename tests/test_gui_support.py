@@ -125,6 +125,23 @@ class FakeLogText:
         pass
 
 
+class FakeOverlayFrame:
+    def __init__(self):
+        self.place_calls = []
+        self.lift_calls = 0
+        self.hidden = True
+
+    def place(self, **kwargs):
+        self.place_calls.append(kwargs)
+        self.hidden = False
+
+    def lift(self):
+        self.lift_calls += 1
+
+    def place_forget(self):
+        self.hidden = True
+
+
 def make_headless_gui():
     app = object.__new__(ArubaMmCleanupGui)
     app.counter_vars = {
@@ -137,8 +154,10 @@ def make_headless_gui():
     app.current_run_query_counted = False
     app.current_run_delete_counted = False
     app.status_var = FakeVar()
-    app.copy_notice_var = FakeVar("")
+    app.copy_notice_title_var = FakeVar("")
+    app.copy_notice_mac_var = FakeVar("")
     app.copy_notice_after_id = None
+    app.copy_notice_frame = FakeOverlayFrame()
     app.cancel_button = FakeButton()
     app.manual_button = FakeButton()
     app.schedule_button = FakeButton()
@@ -517,13 +536,45 @@ def test_result_mac_column_click_copies_mac_and_hides_notice():
     ArubaMmCleanupGui._copy_mac_from_table_event(app, FakeClickEvent(), table, "#1")
 
     assert app.clipboard_values == ["aa:bb:cc:00:00:01"]
-    assert app.copy_notice_var.get() == "MAC 복사됨: aa:bb:cc:00:00:01"
+    assert app.copy_notice_title_var.get() == "복사 완료"
+    assert app.copy_notice_mac_var.get() == "aa:bb:cc:00:00:01"
+    assert app.copy_notice_frame.place_calls == [{"relx": 0.5, "rely": 0.5, "anchor": "center"}]
+    assert app.copy_notice_frame.lift_calls == 1
+    assert app.copy_notice_frame.hidden is False
     assert app.scheduled_callbacks[0][0] == 1000
 
     app.scheduled_callbacks[0][1]()
 
-    assert app.copy_notice_var.get() == ""
+    assert app.copy_notice_title_var.get() == ""
+    assert app.copy_notice_mac_var.get() == ""
+    assert app.copy_notice_frame.hidden is True
     assert app.copy_notice_after_id is None
+
+
+def test_repeated_mac_copy_replaces_center_notice_timer():
+    app = make_headless_gui()
+    table = FakeTreeTable()
+    table.insert(
+        "",
+        "end",
+        iid="aa:bb:cc:00:00:01",
+        values=("aa:bb:cc:00:00:01", "삭제 대상", "2026-07-02 13:00:00", "", ""),
+    )
+
+    ArubaMmCleanupGui._copy_mac_from_table_event(app, FakeClickEvent(), table, "#1")
+    table.rows["aa:bb:cc:00:00:01"]["values"] = (
+        "aa:bb:cc:00:00:09",
+        "삭제 대상",
+        "2026-07-02 13:00:00",
+        "",
+        "",
+    )
+    ArubaMmCleanupGui._copy_mac_from_table_event(app, FakeClickEvent(), table, "#1")
+
+    assert app.clipboard_values == ["aa:bb:cc:00:00:09"]
+    assert app.copy_notice_mac_var.get() == "aa:bb:cc:00:00:09"
+    assert app.canceled_after_ids == ["after-1"]
+    assert len(app.scheduled_callbacks) == 2
 
 
 def test_history_mac_column_click_copies_second_column_mac():
@@ -540,7 +591,8 @@ def test_history_mac_column_click_copies_second_column_mac():
     ArubaMmCleanupGui._copy_mac_from_table_event(app, FakeClickEvent(), table, "#2")
 
     assert app.clipboard_values == ["aa:bb:cc:00:00:02"]
-    assert app.copy_notice_var.get() == "MAC 복사됨: aa:bb:cc:00:00:02"
+    assert app.copy_notice_title_var.get() == "복사 완료"
+    assert app.copy_notice_mac_var.get() == "aa:bb:cc:00:00:02"
 
 
 def test_non_mac_column_click_does_not_copy_mac():
@@ -557,5 +609,7 @@ def test_non_mac_column_click_does_not_copy_mac():
     ArubaMmCleanupGui._copy_mac_from_table_event(app, FakeClickEvent(), table, "#1")
 
     assert app.clipboard_values == []
-    assert app.copy_notice_var.get() == ""
+    assert app.copy_notice_title_var.get() == ""
+    assert app.copy_notice_mac_var.get() == ""
+    assert app.copy_notice_frame.hidden is True
     assert app.scheduled_callbacks == []

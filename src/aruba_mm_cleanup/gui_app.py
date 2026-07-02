@@ -72,6 +72,7 @@ class ArubaMmCleanupGui(tk.Tk):
         self.loaded_history_dir: Optional[Path] = None
         self._drain_after_id: Optional[str] = None
         self.copy_notice_after_id: Optional[str] = None
+        self.copy_notice_frame: Optional[tk.Frame] = None
         self.cumulative_queried_count = 0
         self.cumulative_deleted_count = 0
         self.current_run_queried_count = 0
@@ -90,7 +91,8 @@ class ArubaMmCleanupGui(tk.Tk):
         self.status_var = tk.StringVar(value="대기 중")
         self.timer_value_var = tk.StringVar(value="-")
         self.timer_state_var = tk.StringVar(value="대기")
-        self.copy_notice_var = tk.StringVar(value="")
+        self.copy_notice_title_var = tk.StringVar(value="")
+        self.copy_notice_mac_var = tk.StringVar(value="")
         self.counter_vars = {
             "queried": tk.StringVar(value="0"),
             "deleted": tk.StringVar(value="0"),
@@ -183,6 +185,7 @@ class ArubaMmCleanupGui(tk.Tk):
         self._build_cards(main)
         self._build_results(main)
         self._build_log(main)
+        self._build_copy_notice_overlay()
 
     def _sidebar_button(
         self,
@@ -362,13 +365,6 @@ class ArubaMmCleanupGui(tk.Tk):
         top = tk.Frame(frame, bg=PANEL)
         top.grid(row=0, column=0, sticky="ew", padx=16, pady=(14, 8))
         tk.Label(top, text="삭제 대상 및 결과", bg=PANEL, fg=TEXT, font=("Segoe UI Semibold", 12)).pack(side="left")
-        tk.Label(
-            top,
-            textvariable=self.copy_notice_var,
-            bg=PANEL,
-            fg=ACCENT,
-            font=("Segoe UI", 9),
-        ).pack(side="right")
         columns = ("mac", "status", "queried_at", "deleted_at", "error")
         self.table = ttk.Treeview(frame, columns=columns, show="headings", height=9)
         headings = {
@@ -450,6 +446,24 @@ class ArubaMmCleanupGui(tk.Tk):
 
     def _panel(self, parent: tk.Widget) -> tk.Frame:
         return tk.Frame(parent, bg=PANEL, highlightbackground=LINE, highlightthickness=1)
+
+    def _build_copy_notice_overlay(self) -> None:
+        frame = tk.Frame(self, bg=TEXT, highlightbackground=ACCENT, highlightthickness=1)
+        tk.Label(
+            frame,
+            textvariable=self.copy_notice_title_var,
+            bg=TEXT,
+            fg="#ffffff",
+            font=("Segoe UI Semibold", 13),
+        ).pack(anchor="center", padx=34, pady=(18, 4))
+        tk.Label(
+            frame,
+            textvariable=self.copy_notice_mac_var,
+            bg=TEXT,
+            fg="#ffffff",
+            font=("Consolas", 12),
+        ).pack(anchor="center", padx=34, pady=(0, 18))
+        self.copy_notice_frame = frame
 
     def _action_button(
         self,
@@ -1074,11 +1088,18 @@ class ArubaMmCleanupGui(tk.Tk):
                 self.after_cancel(self.copy_notice_after_id)
             except tk.TclError:
                 pass
-        self.copy_notice_var.set(f"MAC 복사됨: {mac}")
+        self.copy_notice_title_var.set("복사 완료")
+        self.copy_notice_mac_var.set(mac)
+        if self.copy_notice_frame is not None:
+            self.copy_notice_frame.place(relx=0.5, rely=0.5, anchor="center")
+            self.copy_notice_frame.lift()
         self.copy_notice_after_id = self.after(1000, self._hide_copy_notice)
 
     def _hide_copy_notice(self) -> None:
-        self.copy_notice_var.set("")
+        self.copy_notice_title_var.set("")
+        self.copy_notice_mac_var.set("")
+        if self.copy_notice_frame is not None:
+            self.copy_notice_frame.place_forget()
         self.copy_notice_after_id = None
 
     def _destroy_window(self) -> None:
