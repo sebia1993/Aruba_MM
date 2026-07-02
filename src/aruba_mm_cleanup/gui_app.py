@@ -1141,15 +1141,24 @@ class ArubaMmCleanupGui(tk.Tk):
             return
 
     def _ensure_cumulative_counters(self) -> None:
-        if not hasattr(self, "cumulative_queried_count"):
-            self.cumulative_queried_count = _safe_int(self.counter_vars["queried"].get())
-        if not hasattr(self, "cumulative_deleted_count"):
-            self.cumulative_deleted_count = _safe_int(self.counter_vars["deleted"].get())
-        if not hasattr(self, "current_run_queried_count"):
+        counter_vars = self.__dict__.get("counter_vars", {})
+        if "cumulative_queried_count" not in self.__dict__:
+            try:
+                queried_value = counter_vars["queried"].get()
+            except (KeyError, tk.TclError):
+                queried_value = 0
+            self.cumulative_queried_count = _safe_int(queried_value)
+        if "cumulative_deleted_count" not in self.__dict__:
+            try:
+                deleted_value = counter_vars["deleted"].get()
+            except (KeyError, tk.TclError):
+                deleted_value = 0
+            self.cumulative_deleted_count = _safe_int(deleted_value)
+        if "current_run_queried_count" not in self.__dict__:
             self.current_run_queried_count = 0
-        if not hasattr(self, "current_run_query_counted"):
+        if "current_run_query_counted" not in self.__dict__:
             self.current_run_query_counted = False
-        if not hasattr(self, "current_run_delete_counted"):
+        if "current_run_delete_counted" not in self.__dict__:
             self.current_run_delete_counted = False
 
     def _sync_settings_visibility(self) -> None:

@@ -763,6 +763,24 @@ def test_sync_counter_vars_ignores_destroyed_counter_variables():
     assert app.counter_vars["deleted"].value == "3"
 
 
+def test_ensure_cumulative_counters_handles_destroyed_counter_reads():
+    app = make_headless_gui()
+    del app.cumulative_queried_count
+    del app.cumulative_deleted_count
+    app.counter_vars = {
+        "queried": FailingGetVar("7"),
+        "deleted": FailingGetVar("3"),
+    }
+
+    ArubaMmCleanupGui._ensure_cumulative_counters(app)
+
+    assert app.cumulative_queried_count == 0
+    assert app.cumulative_deleted_count == 0
+    assert app.current_run_queried_count == 0
+    assert app.current_run_query_counted is False
+    assert app.current_run_delete_counted is False
+
+
 def test_enqueue_event_drops_worker_events_after_closing():
     app = make_headless_gui()
 
