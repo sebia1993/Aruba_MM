@@ -21,23 +21,29 @@ DEFAULT_INTERVAL_SECONDS = 300
 MIN_INTERVAL_SECONDS = 60
 DELETE_DELAY_SECONDS = 60
 
-BG = "#f4f7fb"
+BG = "#f4f4f4"
 PANEL = "#ffffff"
-TEXT = "#172033"
-MUTED = "#667085"
-ACCENT = "#0f766e"
+TEXT = "#171a20"
+BODY = "#393c41"
+MUTED = "#5c5e62"
+ACCENT = "#3e6ae1"
 DANGER = "#b42318"
-WARNING = "#b54708"
-SUCCESS = "#027a48"
-LINE = "#d7dee8"
-CARD_BG = "#eef6f5"
+LINE = "#eeeeee"
+FIELD_BG = "#fafafa"
+CARD_BG = "#ffffff"
+DISABLED = "#8e8e8e"
+SIDEBAR_BG = "#ffffff"
+SECONDARY_BG = "#f4f4f4"
+SECONDARY_ACTIVE = "#eeeeee"
+LOG_BG = "#171a20"
+LOG_TEXT = "#f4f4f4"
 
 
 class ArubaMmCleanupGui(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
         self.title(APP_TITLE)
-        self.geometry("1120x760")
+        self.geometry("1160x760")
         self.minsize(980, 660)
         self.configure(bg=BG)
 
@@ -49,6 +55,7 @@ class ArubaMmCleanupGui(tk.Tk):
         self.is_running = False
         self.scheduler_running = False
         self.runner = MmCleanupRunner(persistent_session=True)
+        self.settings_frame: Optional[tk.Frame] = None
 
         self.host_var = tk.StringVar()
         self.port_var = tk.StringVar(value="22")
@@ -80,46 +87,74 @@ class ArubaMmCleanupGui(tk.Tk):
             style.theme_use("clam")
         except tk.TclError:
             pass
-        style.configure("Treeview", rowheight=30, font=("Segoe UI", 10), fieldbackground=PANEL, background=PANEL)
-        style.configure("Treeview.Heading", font=("Segoe UI Semibold", 10), foreground=TEXT)
-        style.map("Treeview", background=[("selected", "#d9f2ee")], foreground=[("selected", TEXT)])
+        style.configure(
+            "Treeview",
+            rowheight=30,
+            font=("Segoe UI", 10),
+            fieldbackground=PANEL,
+            background=PANEL,
+            foreground=BODY,
+            borderwidth=0,
+            relief="flat",
+        )
+        style.configure(
+            "Treeview.Heading",
+            font=("Segoe UI Semibold", 10),
+            foreground=TEXT,
+            background=SECONDARY_BG,
+            borderwidth=0,
+            relief="flat",
+        )
+        style.map("Treeview", background=[("selected", SECONDARY_ACTIVE)], foreground=[("selected", TEXT)])
 
     def _build_layout(self) -> None:
         self.grid_columnconfigure(0, weight=0)
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(0, weight=1)
 
-        sidebar = tk.Frame(self, bg="#0f172a", width=238)
+        sidebar = tk.Frame(self, bg=SIDEBAR_BG, width=220, highlightbackground=LINE, highlightthickness=1)
         sidebar.grid(row=0, column=0, sticky="ns")
         sidebar.grid_propagate(False)
         tk.Label(
             sidebar,
-            text="Aruba MM\nCleanup",
-            bg="#0f172a",
-            fg="#ffffff",
+            text="Aruba MM",
+            bg=SIDEBAR_BG,
+            fg=TEXT,
             justify="left",
             font=("Segoe UI Semibold", 20),
         ).pack(anchor="w", padx=20, pady=(24, 8))
         tk.Label(
             sidebar,
-            text="profiling role user cleanup",
-            bg="#0f172a",
-            fg="#cbd5e1",
+            text="Cleanup Dashboard",
+            bg=SIDEBAR_BG,
+            fg=MUTED,
             justify="left",
-            font=("Segoe UI", 9),
+            font=("Segoe UI", 10),
         ).pack(anchor="w", padx=20)
         self.manual_button = self._sidebar_button(sidebar, "1회 실행", self.start_manual_run)
         self.manual_button.pack(fill="x", padx=14, pady=(28, 8))
-        self.schedule_button = self._sidebar_button(sidebar, "주기 실행 시작", self.start_scheduler)
+        self.schedule_button = self._sidebar_button(sidebar, "주기 실행 시작", self.start_scheduler, variant="secondary")
         self.schedule_button.pack(fill="x", padx=14, pady=8)
-        self.stop_schedule_button = self._sidebar_button(sidebar, "주기 실행 정지", self.stop_scheduler, state="disabled")
+        self.stop_schedule_button = self._sidebar_button(
+            sidebar,
+            "주기 실행 정지",
+            self.stop_scheduler,
+            state="disabled",
+            variant="secondary",
+        )
         self.stop_schedule_button.pack(fill="x", padx=14, pady=8)
-        self.disconnect_button = self._sidebar_button(sidebar, "세션 연결 해제", self.disconnect_session)
+        self.disconnect_button = self._sidebar_button(
+            sidebar,
+            "세션 연결 해제",
+            self.disconnect_session,
+            variant="secondary",
+        )
         self.disconnect_button.pack(fill="x", padx=14, pady=8)
 
         main = tk.Frame(self, bg=BG)
-        main.grid(row=0, column=1, sticky="nsew", padx=20, pady=20)
+        main.grid(row=0, column=1, sticky="nsew", padx=24, pady=24)
         main.grid_columnconfigure(0, weight=1)
+        main.grid_rowconfigure(1, weight=0)
         main.grid_rowconfigure(3, weight=1)
 
         self._build_header(main)
@@ -128,19 +163,39 @@ class ArubaMmCleanupGui(tk.Tk):
         self._build_results(main)
         self._build_log(main)
 
-    def _sidebar_button(self, parent: tk.Widget, text: str, command, state: str = "normal") -> tk.Button:
+    def _sidebar_button(
+        self,
+        parent: tk.Widget,
+        text: str,
+        command,
+        state: str = "normal",
+        *,
+        variant: str = "primary",
+    ) -> tk.Button:
+        if variant == "primary":
+            background = ACCENT
+            foreground = "#ffffff"
+            active_background = "#3457b1"
+            active_foreground = "#ffffff"
+        else:
+            background = SECONDARY_BG
+            foreground = TEXT
+            active_background = SECONDARY_ACTIVE
+            active_foreground = TEXT
         return tk.Button(
             parent,
             text=text,
             command=command,
             state=state,
-            bg=ACCENT,
-            fg="#ffffff",
-            disabledforeground="#94a3b8",
-            activebackground="#115e59",
-            activeforeground="#ffffff",
+            bg=background,
+            fg=foreground,
+            disabledforeground=DISABLED,
+            activebackground=active_background,
+            activeforeground=active_foreground,
             relief="flat",
-            font=("Segoe UI Semibold", 11),
+            bd=0,
+            highlightthickness=0,
+            font=("Segoe UI Semibold", 10),
             padx=12,
             pady=10,
             cursor="hand2",
@@ -150,8 +205,8 @@ class ArubaMmCleanupGui(tk.Tk):
         frame = self._panel(parent)
         frame.grid(row=0, column=0, sticky="ew")
         frame.grid_columnconfigure(0, weight=1)
-        tk.Label(frame, text=APP_TITLE, bg=PANEL, fg=TEXT, font=("Segoe UI Semibold", 18)).grid(
-            row=0, column=0, sticky="w", padx=16, pady=(14, 2)
+        tk.Label(frame, text=APP_TITLE, bg=PANEL, fg=TEXT, font=("Segoe UI Semibold", 17)).grid(
+            row=0, column=0, sticky="w", padx=18, pady=(16, 2)
         )
         tk.Label(
             frame,
@@ -159,18 +214,19 @@ class ArubaMmCleanupGui(tk.Tk):
             bg=PANEL,
             fg=ACCENT,
             font=("Segoe UI Semibold", 11),
-        ).grid(row=0, column=1, sticky="e", padx=16, pady=(14, 2))
+        ).grid(row=0, column=1, sticky="e", padx=18, pady=(16, 2))
         tk.Label(
             frame,
             text="조회 후 60초 동안 취소할 수 있고, 시간이 지나면 조회 snapshot의 MAC만 삭제합니다.",
             bg=PANEL,
             fg=MUTED,
             font=("Segoe UI", 10),
-        ).grid(row=1, column=0, columnspan=2, sticky="w", padx=16, pady=(0, 14))
+        ).grid(row=1, column=0, columnspan=2, sticky="w", padx=18, pady=(0, 16))
 
     def _build_settings(self, parent: tk.Widget) -> None:
         frame = self._panel(parent)
-        frame.grid(row=1, column=0, sticky="ew", pady=(14, 0))
+        self.settings_frame = frame
+        frame.grid(row=1, column=0, sticky="ew", pady=(16, 0))
         for column in range(6):
             frame.grid_columnconfigure(column, weight=1)
 
@@ -182,20 +238,36 @@ class ArubaMmCleanupGui(tk.Tk):
         self._entry(frame, "Role", self.role_var, 0, 5)
         self._entry(frame, "Timeout", self.timeout_var, 2, 0, width=7)
         self._entry(frame, "주기(초)", self.interval_var, 2, 1, width=8)
-        tk.Label(frame, text="결과 폴더", bg=PANEL, fg=MUTED, font=("Segoe UI Semibold", 9)).grid(
+        tk.Label(frame, text="결과 폴더", bg=PANEL, fg=MUTED, font=("Segoe UI", 9)).grid(
             row=2, column=2, sticky="w", padx=12, pady=(10, 2)
         )
-        tk.Entry(frame, textvariable=self.output_dir_var, relief="solid", bd=1, font=("Segoe UI", 10)).grid(
+        tk.Entry(
+            frame,
+            textvariable=self.output_dir_var,
+            relief="flat",
+            bd=0,
+            highlightthickness=1,
+            highlightbackground=LINE,
+            highlightcolor=ACCENT,
+            bg=FIELD_BG,
+            fg=TEXT,
+            insertbackground=TEXT,
+            font=("Segoe UI", 10),
+        ).grid(
             row=3, column=2, columnspan=3, sticky="ew", padx=12, pady=(0, 14)
         )
         tk.Button(
             frame,
             text="폴더 선택",
             command=self.browse_output_dir,
-            bg="#e2e8f0",
+            bg=SECONDARY_BG,
             fg=TEXT,
+            activebackground=SECONDARY_ACTIVE,
+            activeforeground=TEXT,
             relief="flat",
-            font=("Segoe UI", 10),
+            bd=0,
+            highlightthickness=0,
+            font=("Segoe UI Semibold", 10),
         ).grid(row=3, column=5, sticky="ew", padx=12, pady=(0, 14))
 
     def _entry(
@@ -209,39 +281,54 @@ class ArubaMmCleanupGui(tk.Tk):
         show: str = "",
         width: int = 16,
     ) -> None:
-        tk.Label(parent, text=label, bg=PANEL, fg=MUTED, font=("Segoe UI Semibold", 9)).grid(
+        tk.Label(parent, text=label, bg=PANEL, fg=MUTED, font=("Segoe UI", 9)).grid(
             row=row, column=column, sticky="w", padx=12, pady=(12, 2)
         )
-        tk.Entry(parent, textvariable=variable, show=show, width=width, relief="solid", bd=1, font=("Segoe UI", 10)).grid(
+        tk.Entry(
+            parent,
+            textvariable=variable,
+            show=show,
+            width=width,
+            relief="flat",
+            bd=0,
+            highlightthickness=1,
+            highlightbackground=LINE,
+            highlightcolor=ACCENT,
+            bg=FIELD_BG,
+            fg=TEXT,
+            insertbackground=TEXT,
+            font=("Segoe UI", 10),
+        ).grid(
             row=row + 1, column=column, sticky="ew", padx=12, pady=(0, 12)
         )
 
     def _build_cards(self, parent: tk.Widget) -> None:
         frame = tk.Frame(parent, bg=BG)
-        frame.grid(row=2, column=0, sticky="ew", pady=(14, 0))
+        frame.grid(row=2, column=0, sticky="ew", pady=(16, 0))
         for column in range(5):
             frame.grid_columnconfigure(column, weight=1, uniform="cards")
-        self._card(frame, "조회", self.counter_vars["queried"], 0, ACCENT)
-        self._card(frame, "삭제 성공", self.counter_vars["deleted"], 1, SUCCESS)
+        self._card(frame, "조회", self.counter_vars["queried"], 0, TEXT)
+        self._card(frame, "삭제 성공", self.counter_vars["deleted"], 1, TEXT)
         self._card(frame, "삭제 실패", self.counter_vars["failed"], 2, DANGER)
-        self._card(frame, "남은 MAC", self.counter_vars["remaining"], 3, WARNING)
-        self._card(frame, "카운트다운", self.countdown_var, 4, TEXT)
+        self._card(frame, "남은 MAC", self.counter_vars["remaining"], 3, TEXT)
+        self._card(frame, "카운트다운", self.countdown_var, 4, ACCENT)
 
     def _card(self, parent: tk.Widget, title: str, variable: tk.StringVar, column: int, color: str) -> None:
         card = tk.Frame(parent, bg=CARD_BG, highlightbackground=LINE, highlightthickness=1)
         card.grid(row=0, column=column, sticky="ew", padx=(0 if column == 0 else 8, 0))
-        tk.Label(card, text=title, bg=CARD_BG, fg=MUTED, font=("Segoe UI Semibold", 9)).pack(anchor="w", padx=14, pady=(10, 0))
+        tk.Label(card, text=title, bg=CARD_BG, fg=MUTED, font=("Segoe UI", 9)).pack(anchor="w", padx=16, pady=(12, 0))
         tk.Label(card, textvariable=variable, bg=CARD_BG, fg=color, font=("Segoe UI Semibold", 24)).pack(
-            anchor="w", padx=14, pady=(0, 10)
+            anchor="w", padx=16, pady=(0, 12)
         )
 
     def _build_results(self, parent: tk.Widget) -> None:
         frame = self._panel(parent)
-        frame.grid(row=3, column=0, sticky="nsew", pady=(14, 0))
+        frame.grid(row=3, column=0, sticky="nsew", pady=(16, 0))
         frame.grid_columnconfigure(0, weight=1)
-        frame.grid_rowconfigure(1, weight=1)
+        frame.grid_rowconfigure(1, weight=3)
+        frame.grid_rowconfigure(3, weight=1)
         top = tk.Frame(frame, bg=PANEL)
-        top.grid(row=0, column=0, sticky="ew", padx=14, pady=(12, 6))
+        top.grid(row=0, column=0, sticky="ew", padx=16, pady=(14, 8))
         tk.Label(top, text="삭제 대상 및 결과", bg=PANEL, fg=TEXT, font=("Segoe UI Semibold", 12)).pack(side="left")
         tk.Label(top, textvariable=self.next_run_var, bg=PANEL, fg=MUTED, font=("Segoe UI", 10)).pack(side="right")
         columns = ("mac", "status", "queried_at", "deleted_at", "error")
@@ -257,14 +344,46 @@ class ArubaMmCleanupGui(tk.Tk):
         for key in columns:
             self.table.heading(key, text=headings[key])
             self.table.column(key, width=widths[key], anchor="w")
-        self.table.grid(row=1, column=0, sticky="nsew", padx=14, pady=(0, 12))
+        self.table.grid(row=1, column=0, sticky="nsew", padx=16, pady=(0, 12))
+
+        history_top = tk.Frame(frame, bg=PANEL)
+        history_top.grid(row=2, column=0, sticky="ew", padx=16, pady=(0, 8))
+        tk.Label(history_top, text="최근 삭제 이력", bg=PANEL, fg=TEXT, font=("Segoe UI Semibold", 12)).pack(
+            side="left"
+        )
+        tk.Button(
+            history_top,
+            text="이력 지우기",
+            command=self.clear_history,
+            bg=SECONDARY_BG,
+            fg=TEXT,
+            activebackground=SECONDARY_ACTIVE,
+            activeforeground=TEXT,
+            relief="flat",
+            bd=0,
+            highlightthickness=0,
+            font=("Segoe UI Semibold", 10),
+        ).pack(side="right")
+        history_columns = ("run_at", "mac", "result", "error")
+        self.history_table = ttk.Treeview(frame, columns=history_columns, show="headings", height=4)
+        history_headings = {
+            "run_at": "실행시각",
+            "mac": "MAC",
+            "result": "결과",
+            "error": "오류",
+        }
+        history_widths = {"run_at": 150, "mac": 150, "result": 120, "error": 500}
+        for key in history_columns:
+            self.history_table.heading(key, text=history_headings[key])
+            self.history_table.column(key, width=history_widths[key], anchor="w")
+        self.history_table.grid(row=3, column=0, sticky="nsew", padx=16, pady=(0, 14))
 
     def _build_log(self, parent: tk.Widget) -> None:
         frame = self._panel(parent)
-        frame.grid(row=4, column=0, sticky="ew", pady=(14, 0))
+        frame.grid(row=4, column=0, sticky="ew", pady=(16, 0))
         frame.grid_columnconfigure(0, weight=1)
         button_row = tk.Frame(frame, bg=PANEL)
-        button_row.grid(row=0, column=0, sticky="ew", padx=14, pady=(10, 0))
+        button_row.grid(row=0, column=0, sticky="ew", padx=16, pady=(12, 0))
         self.cancel_button = tk.Button(
             button_row,
             text="이번 삭제 취소",
@@ -272,7 +391,11 @@ class ArubaMmCleanupGui(tk.Tk):
             state="disabled",
             bg=DANGER,
             fg="#ffffff",
+            activebackground="#8f1d14",
+            activeforeground="#ffffff",
             relief="flat",
+            bd=0,
+            highlightthickness=0,
             font=("Segoe UI Semibold", 10),
         )
         self.cancel_button.pack(side="left")
@@ -280,22 +403,26 @@ class ArubaMmCleanupGui(tk.Tk):
             button_row,
             text="로그 지우기",
             command=self.clear_log,
-            bg="#e2e8f0",
+            bg=SECONDARY_BG,
             fg=TEXT,
+            activebackground=SECONDARY_ACTIVE,
+            activeforeground=TEXT,
             relief="flat",
-            font=("Segoe UI", 10),
+            bd=0,
+            highlightthickness=0,
+            font=("Segoe UI Semibold", 10),
         ).pack(side="right")
         self.log_text = tk.Text(
             frame,
             height=7,
-            bg="#111827",
-            fg="#e5e7eb",
-            insertbackground="#e5e7eb",
+            bg=LOG_BG,
+            fg=LOG_TEXT,
+            insertbackground=LOG_TEXT,
             relief="flat",
             font=("Consolas", 10),
             wrap="word",
         )
-        self.log_text.grid(row=1, column=0, sticky="ew", padx=14, pady=10)
+        self.log_text.grid(row=1, column=0, sticky="ew", padx=16, pady=12)
 
     def _panel(self, parent: tk.Widget) -> tk.Frame:
         return tk.Frame(parent, bg=PANEL, highlightbackground=LINE, highlightthickness=1)
@@ -335,6 +462,7 @@ class ArubaMmCleanupGui(tk.Tk):
         self.scheduler_running = True
         self.schedule_button.configure(state="disabled")
         self.stop_schedule_button.configure(state="normal")
+        self._sync_settings_visibility()
         self._log(f"주기 실행 시작: {interval}초 간격")
         self.scheduler_worker = threading.Thread(
             target=self._scheduler_loop,
@@ -349,6 +477,7 @@ class ArubaMmCleanupGui(tk.Tk):
         self.schedule_button.configure(state="normal")
         self.stop_schedule_button.configure(state="disabled")
         self.next_run_var.set("-")
+        self._sync_settings_visibility()
         self._log("주기 실행 정지 요청")
 
     def cancel_current_delete(self) -> None:
@@ -469,6 +598,7 @@ class ArubaMmCleanupGui(tk.Tk):
                     self.schedule_button.configure(state="normal")
                     self.stop_schedule_button.configure(state="disabled")
                     self.next_run_var.set("-")
+                    self._sync_settings_visibility()
         except queue.Empty:
             pass
         self.after(150, self._drain_events)
@@ -537,6 +667,7 @@ class ArubaMmCleanupGui(tk.Tk):
             self.status_var.set("완료")
         if summary.audit_path:
             self._log(f"AUDIT: {summary.audit_path}")
+        self._append_history_rows(summary)
 
     def _replace_table(self, macs: list[str], status: str) -> None:
         self.table.delete(*self.table.get_children())
@@ -566,6 +697,25 @@ class ArubaMmCleanupGui(tk.Tk):
         self.manual_button.configure(state="disabled" if running else "normal")
         if running:
             self.cancel_button.configure(state="disabled")
+        self._sync_settings_visibility()
+
+    def _sync_settings_visibility(self) -> None:
+        if self.settings_frame is None:
+            return
+        if self.is_running or self.scheduler_running:
+            self.settings_frame.grid_remove()
+        else:
+            self.settings_frame.grid()
+
+    def _append_history_rows(self, summary) -> None:
+        if not summary.delete_results:
+            return
+        run_at = summary.started_at.strftime("%Y-%m-%d %H:%M:%S")
+        base_index = len(self.history_table.get_children())
+        for offset, item in enumerate(summary.delete_results):
+            result = "삭제 완료" if item.success else "삭제 실패"
+            row_id = f"history-{base_index + offset}"
+            self.history_table.insert("", "end", iid=row_id, values=(run_at, item.mac, result, item.error))
 
     def _log(self, message: str) -> None:
         self.log_text.configure(state="normal")
@@ -577,6 +727,9 @@ class ArubaMmCleanupGui(tk.Tk):
         self.log_text.configure(state="normal")
         self.log_text.delete("1.0", "end")
         self.log_text.configure(state="disabled")
+
+    def clear_history(self) -> None:
+        self.history_table.delete(*self.history_table.get_children())
 
 
 def main() -> int:
