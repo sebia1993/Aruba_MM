@@ -145,7 +145,11 @@ class MmCleanupRunner:
                 progress_callback,
                 should_cancel=cancel_check,
             )
-            if cancel_check():
+            try:
+                canceled_after_delete = cancel_check()
+            except Exception:
+                canceled_after_delete = True
+            if canceled_after_delete:
                 summary.canceled = True
                 summary.verification_skipped = True
                 summary.delete_success_count = sum(1 for item in summary.delete_results if item.success)
@@ -156,7 +160,11 @@ class MmCleanupRunner:
 
             # Catch stop/cancel requests that arrive after the delete loop but
             # before the verification query starts.
-            if cancel_check():
+            try:
+                canceled_before_verify = cancel_check()
+            except Exception:
+                canceled_before_verify = True
+            if canceled_before_verify:
                 summary.canceled = True
                 summary.verification_skipped = True
                 summary.delete_success_count = sum(1 for item in summary.delete_results if item.success)
@@ -207,9 +215,14 @@ class MmCleanupRunner:
         self._emit(progress_callback, "delete_batch_start", count=len(unique_macs))
         results: list[DeleteResult] = []
         for index, mac in enumerate(unique_macs, start=1):
-            if should_cancel is not None and should_cancel():
-                self._emit(progress_callback, "delete_canceled", count=len(unique_macs) - index + 1)
-                break
+            if should_cancel is not None:
+                try:
+                    if should_cancel():
+                        self._emit(progress_callback, "delete_canceled", count=len(unique_macs) - index + 1)
+                        break
+                except Exception:
+                    self._emit(progress_callback, "delete_canceled", count=len(unique_macs) - index + 1)
+                    break
             try:
                 command = build_delete_command(mac)
             except ValueError as exc:

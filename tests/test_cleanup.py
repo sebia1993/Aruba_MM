@@ -497,6 +497,51 @@ def test_run_once_can_cancel_during_delete_loop_before_next_mac(tmp_path):
     assert connection.commands.count("show global-user-table list role profiling") == 1
 
 
+def test_run_once_cancels_when_cancel_check_fails_during_delete_loop(tmp_path):
+    first_query = (
+        "10.1.1.10 aa:bb:cc:00:00:01 user-a profiling\n"
+        "10.1.1.11 aa:bb:cc:00:00:02 user-b profiling"
+    )
+    connection = FakeConnection(
+        responses={
+            "no paging": "",
+            "show global-user-table list role profiling": [first_query],
+        }
+    )
+    events = []
+    runner = MmCleanupRunner(
+        connection_factory=lambda _config, _timeout: connection,
+        sleep_func=lambda _seconds: None,
+    )
+    first_check = True
+
+    def cancel_check():
+        nonlocal first_check
+        if first_check:
+            first_check = False
+            return False
+        raise RuntimeError("cancel check failed")
+
+    summary = runner.run_once(
+        MmConnectionConfig(host="192.0.2.10", username="admin", password="secret"),
+        CleanupSettings(role="profiling", timeout=5, delete_delay_seconds=0),
+        output_dir=tmp_path,
+        progress_callback=lambda event, payload: events.append((event, payload)),
+        should_cancel=cancel_check,
+    )
+
+    assert summary.canceled is True
+    assert summary.error == ""
+    assert summary.verification_skipped is True
+    assert summary.delete_success_count == 0
+    assert summary.delete_failure_count == 0
+    assert summary.remaining_count == 2
+    assert summary.delete_results == []
+    assert "aaa user delete mac aa:bb:cc:00:00:01" not in connection.commands
+    assert "aaa user delete mac aa:bb:cc:00:00:02" not in connection.commands
+    assert any(event == "delete_canceled" and payload["count"] == 2 for event, payload in events)
+
+
 def test_run_once_skips_verify_when_canceled_after_delete_loop(tmp_path):
     first_query = "10.1.1.10 aa:bb:cc:00:00:01 user-a profiling"
     connection = FakeConnection(
