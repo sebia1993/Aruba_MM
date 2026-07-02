@@ -44,6 +44,19 @@ class FailingDisconnectConnection(FakeConnection):
         raise RuntimeError("disconnect failed")
 
 
+class UnprintableDisconnectConnection(FakeConnection):
+    class BadErrorText(Exception):
+        def __str__(self):
+            raise RuntimeError("bad error text")
+
+        def __repr__(self):
+            raise RuntimeError("bad error repr")
+
+    def disconnect(self):
+        self.disconnected = True
+        raise self.BadErrorText()
+
+
 class MissingCommandConnection:
     def __init__(self):
         self.disconnected = False
@@ -166,6 +179,23 @@ def test_session_disconnect_failure_is_reported_and_session_is_cleared():
     assert connection.disconnected is True
     assert session.is_connected is False
     assert ("warning", {"message": "disconnect failed: disconnect failed", "reason": "manual"}) in events
+    assert ("session_disconnected", {"reason": "manual"}) in events
+
+
+def test_session_disconnect_unprintable_failure_is_reported_and_session_is_cleared():
+    connection = UnprintableDisconnectConnection()
+    events = []
+    session = MmSession(connection_factory=lambda _config, _timeout: connection)
+    config = MmConnectionConfig(host="192.0.2.10", username="admin", password="secret")
+    settings = CleanupSettings(role="profiling", timeout=5, delete_delay_seconds=0)
+
+    assert session.run_command(config, settings, "show version") == ""
+
+    session.disconnect(progress_callback=lambda event, payload: events.append((event, payload)), reason="manual")
+
+    assert connection.disconnected is True
+    assert session.is_connected is False
+    assert ("warning", {"message": "disconnect failed: BadErrorText", "reason": "manual"}) in events
     assert ("session_disconnected", {"reason": "manual"}) in events
 
 

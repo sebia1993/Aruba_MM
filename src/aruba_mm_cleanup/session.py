@@ -72,7 +72,7 @@ class MmSession:
         try:
             connection.disconnect()
         except Exception as exc:
-            self._emit(progress_callback, "warning", message=f"disconnect failed: {exc}", reason=reason)
+            self._emit(progress_callback, "warning", message=f"disconnect failed: {_exception_text(exc)}", reason=reason)
         self._emit(progress_callback, "session_disconnected", reason=reason)
 
     def _ensure_connected(
