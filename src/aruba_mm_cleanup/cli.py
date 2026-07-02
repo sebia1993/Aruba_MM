@@ -22,7 +22,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     parser.add_argument("--output-dir", type=Path, default=Path("outputs"), help="audit output directory")
     parser.add_argument("--yes", action="store_true", help="run without an interactive pre-countdown confirmation")
     args = parser.parse_args(argv)
-    if not args.host.strip():
+    host = args.host.strip()
+    if not host:
         parser.error("--host must not be empty")
     if not args.username.strip():
         parser.error("--username must not be empty")
@@ -51,7 +52,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             return 1
 
     config = MmConnectionConfig(
-        host=args.host,
+        host=host,
         username=args.username,
         password=password,
         port=args.port,
