@@ -1326,6 +1326,12 @@ class ArubaMmCleanupGui(tk.Tk):
             except Exception:
                 return ""
 
+        def safe_get(mapping: dict[str, object], key: str, default: object) -> object:
+            try:
+                return mapping.get(key, default)
+            except Exception:
+                return default
+
         jsonl_path = output_dir / HISTORY_FILE_NAME
         if jsonl_path.exists():
             records: deque[dict[str, object]] = deque(maxlen=MAX_HISTORY_ROWS)
@@ -1353,12 +1359,12 @@ class ArubaMmCleanupGui(tk.Tk):
                 continue
             if not isinstance(audit, dict):
                 continue
-            run_at = safe_text(audit.get("started_at", ""))
-            reappeared_macs = audit.get("reappeared_macs") or []
+            run_at = safe_text(safe_get(audit, "started_at", ""))
+            reappeared_macs = safe_get(audit, "reappeared_macs", []) or []
             if not isinstance(reappeared_macs, (list, tuple, set)):
                 reappeared_macs = []
             reappeared = {mac for mac in reappeared_macs if isinstance(mac, str)}
-            delete_results = audit.get("delete_results") or []
+            delete_results = safe_get(audit, "delete_results", []) or []
             if not isinstance(delete_results, (list, tuple)):
                 delete_results = []
             for item in delete_results:

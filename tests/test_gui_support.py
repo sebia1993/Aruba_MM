@@ -1303,6 +1303,30 @@ def test_history_read_audit_fallback_handles_unprintable_started_at(tmp_path, mo
     ]
 
 
+def test_history_read_audit_fallback_handles_failing_optional_fields(tmp_path, monkeypatch):
+    class FailingAudit(dict):
+        def get(self, key, default=None):
+            if key in {"reappeared_macs", "delete_results"}:
+                raise RuntimeError(f"bad {key}")
+            return super().get(key, default)
+
+    output_dir = tmp_path / "outputs"
+    run_dir = output_dir / "20260702_130000_000000"
+    run_dir.mkdir(parents=True)
+    (run_dir / "cleanup_summary.json").write_text("bad audit payload", encoding="utf-8")
+
+    monkeypatch.setattr(
+        gui_app_module.json,
+        "loads",
+        lambda _payload: FailingAudit({"started_at": "2026-07-02T13:00:00"}),
+    )
+    app = make_headless_gui()
+
+    loaded = app._read_history_records(output_dir)
+
+    assert loaded == []
+
+
 def test_history_load_ignores_invalid_reappeared_macs_type(tmp_path):
     output_dir = tmp_path / "outputs"
     run_dir = output_dir / "20260702_130000_000000"
