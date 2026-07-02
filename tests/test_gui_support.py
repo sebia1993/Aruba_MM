@@ -1464,6 +1464,55 @@ def test_start_session_close_returns_without_waiting_for_runner_lock():
     assert close_calls == ["closed"]
 
 
+def test_start_session_close_thread_start_failure_does_not_raise(monkeypatch):
+    class FailingThread:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def start(self):
+            raise RuntimeError("thread start failed")
+
+    app = make_headless_gui()
+    app.session_close_worker = None
+    monkeypatch.setattr(gui_app_module.threading, "Thread", FailingThread)
+
+    ArubaMmCleanupGui._start_session_close(app, reason="manual", enqueue_progress=True)
+
+    assert app.session_close_worker is None
+    assert app.event_queue.get_nowait() == (
+        "progress",
+        (
+            "warning",
+            {"message": "세션 종료 스레드 시작 실패 - thread start failed", "reason": "manual"},
+        ),
+    )
+    assert app.event_queue.empty()
+
+
+def test_on_close_continues_when_session_close_thread_start_fails(monkeypatch):
+    class FailingThread:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def start(self):
+            raise RuntimeError("thread start failed")
+
+    app = make_headless_gui()
+    app.session_close_worker = None
+    app._drain_after_id = None
+    app.copy_notice_after_id = None
+    scheduled = []
+    app.after = lambda ms, callback: scheduled.append((ms, callback)) or "shutdown-id"
+    monkeypatch.setattr(gui_app_module.threading, "Thread", FailingThread)
+
+    ArubaMmCleanupGui.on_close(app)
+
+    assert app.closing is True
+    assert app.session_close_worker is None
+    assert scheduled[0][0] == SHUTDOWN_GRACE_MS
+    assert "WARNING: 세션 종료 스레드 시작 실패 - thread start failed" in app.logs
+
+
 def test_close_runner_session_reports_manual_close_failure():
     app = make_headless_gui()
     app.runner_lock = threading.Lock()

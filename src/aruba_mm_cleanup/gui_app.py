@@ -756,7 +756,16 @@ class ArubaMmCleanupGui(tk.Tk):
             kwargs={"reason": reason, "enqueue_progress": enqueue_progress},
             daemon=True,
         )
-        self.session_close_worker.start()
+        try:
+            self.session_close_worker.start()
+        except Exception as exc:
+            self.session_close_worker = None
+            error = _safe_text(exc) or exc.__class__.__name__
+            warning = f"세션 종료 스레드 시작 실패 - {error}"
+            if enqueue_progress:
+                self._enqueue_event("progress", ("warning", {"message": warning, "reason": reason}))
+            else:
+                self._log(f"WARNING: {warning}")
 
     def _should_cancel_run(self) -> bool:
         return self.cancel_event.is_set() or self.scheduler_stop_event.is_set() or self.closing
