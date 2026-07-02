@@ -43,6 +43,15 @@ def test_parse_global_user_table_uses_default_role_when_role_filter_is_none():
     assert [entry.mac for entry in entries] == ["aa:bb:cc:00:00:01"]
 
 
+def test_parse_global_user_table_handles_non_string_output_without_attribute_error():
+    result = parse_global_user_table_explained(None, role_filter="profiling")  # type: ignore[arg-type]
+
+    assert result.entries == []
+    assert len(result.decisions) == 1
+    assert result.decisions[0].action == "ignored"
+    assert result.decisions[0].reason == "invalid_output"
+
+
 def test_parse_global_user_table_records_type_na_from_header():
     header = f"{'IP':<16}{'MAC Address':<21}{'User':<14}{'Role':<12}{'Type':<8}{'BSSID'}"
     output = "\n".join(

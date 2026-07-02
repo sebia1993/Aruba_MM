@@ -37,6 +37,8 @@ def parse_global_user_table_explained(output: str, *, role_filter: str = "profil
     from the identity columns near the start of each data row.
     """
     role = role_filter.strip().casefold() if isinstance(role_filter, str) else "profiling"
+    if not isinstance(output, str):
+        return ParseResult(entries=[], decisions=[ParseDecision(0, "ignored", "invalid_output")])
     entries: dict[str, UserEntry] = {}
     decisions: list[ParseDecision] = []
     type_spans: list[tuple[int, int]] = []
