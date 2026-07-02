@@ -433,6 +433,25 @@ def test_zero_query_writes_audit_without_delete(tmp_path):
     assert query_conn.disconnected is True
 
 
+def test_non_string_query_response_is_reported_without_delete(tmp_path):
+    query_conn = FakeConnection(responses={"no paging": "", "show global-user-table list role profiling": None})
+    runner = MmCleanupRunner(
+        connection_factory=lambda _config, _timeout: query_conn,
+        sleep_func=lambda _seconds: None,
+    )
+
+    summary = runner.run_once(
+        MmConnectionConfig(host="192.0.2.10", username="admin", password="secret"),
+        CleanupSettings(role="profiling", timeout=5, delete_delay_seconds=0),
+        output_dir=Path(tmp_path),
+    )
+
+    assert "장비 조회 응답" in summary.error
+    assert summary.delete_results == []
+    assert query_conn.commands == ["no paging", "show global-user-table list role profiling"]
+    assert query_conn.disconnected is True
+
+
 def test_progress_callback_failure_does_not_abort_run(tmp_path):
     query_conn = FakeConnection(responses={"no paging": "", "show global-user-table list role profiling": ""})
     runner = MmCleanupRunner(

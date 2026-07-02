@@ -70,6 +70,8 @@ class MmCleanupRunner:
         command = build_query_command(settings.role)
         self._emit(progress_callback, "query_start", command=command, role=settings.role)
         output = self.session.run_command(config, settings, command, progress_callback=progress_callback)
+        if not isinstance(output, str):
+            raise RuntimeError("장비 조회 응답이 올바르지 않습니다.")
         parsed = parse_global_user_table_explained(output, role_filter=settings.role)
         self._emit(
             progress_callback,
