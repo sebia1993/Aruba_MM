@@ -861,13 +861,17 @@ class ArubaMmCleanupGui(tk.Tk):
                 self.status_var.set("MM 접속 중")
             except tk.TclError:
                 pass
-            self._log(f"CONNECT: {payload.get('host')}")
+            raw_host = payload.get("host")
+            host = "None" if raw_host is None else (_safe_text(raw_host) or raw_host.__class__.__name__)
+            self._log(f"CONNECT: {host}")
         elif event == "connect_done":
             try:
                 self.status_var.set("MM 세션 연결됨")
             except tk.TclError:
                 pass
-            self._log(f"CONNECT OK: {payload.get('host')}")
+            raw_host = payload.get("host")
+            host = "None" if raw_host is None else (_safe_text(raw_host) or raw_host.__class__.__name__)
+            self._log(f"CONNECT OK: {host}")
         elif event == "session_reconnect_start":
             try:
                 self.status_var.set("MM 세션 재접속 중")
@@ -883,7 +887,9 @@ class ArubaMmCleanupGui(tk.Tk):
                 self.status_var.set("세션 연결 해제")
             except tk.TclError:
                 pass
-            self._log(f"DISCONNECT: {payload.get('reason')}")
+            raw_reason = payload.get("reason")
+            reason = "None" if raw_reason is None else (_safe_text(raw_reason) or raw_reason.__class__.__name__)
+            self._log(f"DISCONNECT: {reason}")
         elif event == "warning":
             raw_message = payload.get("message")
             message = (
@@ -896,7 +902,9 @@ class ArubaMmCleanupGui(tk.Tk):
             except tk.TclError:
                 pass
             self._set_timer("실행 중", "조회 처리")
-            self._log(f"QUERY: {payload.get('command')}")
+            raw_command = payload.get("command")
+            command = "None" if raw_command is None else (_safe_text(raw_command) or raw_command.__class__.__name__)
+            self._log(f"QUERY: {command}")
         elif event == "query_done":
             raw_macs = payload.get("macs")
             raw_type_na_macs = payload.get("type_na_macs")
@@ -910,7 +918,9 @@ class ArubaMmCleanupGui(tk.Tk):
                         continue
             self._count_current_query(len(_unique_display_macs(macs)))
             self._replace_table(macs, "삭제 대상", type_na_macs=type_na_macs)
-            self._log(f"QUERY DONE: {payload.get('count', 0)} MAC(s)")
+            raw_count = payload.get("count", 0)
+            count = _safe_text(raw_count) or raw_count.__class__.__name__
+            self._log(f"QUERY DONE: {count} MAC(s)")
             for mac in _unique_display_macs(type_na_macs):
                 self._log(f"TYPE N/A: {mac} - 관리자 직접 장비 지정 필요")
         elif event == "countdown":

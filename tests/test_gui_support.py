@@ -643,6 +643,18 @@ def test_progress_status_update_failure_does_not_skip_followup_work():
     assert "CONNECT: 192.0.2.10" in app.logs
 
 
+def test_connection_progress_handles_unprintable_payload_without_losing_log():
+    app = make_headless_gui()
+
+    ArubaMmCleanupGui._handle_progress(app, "connect_start", {"host": BadErrorText()})
+    ArubaMmCleanupGui._handle_progress(app, "connect_done", {"host": BadErrorText()})
+    ArubaMmCleanupGui._handle_progress(app, "session_disconnected", {"reason": BadErrorText()})
+
+    assert "CONNECT: BadErrorText" in app.logs
+    assert "CONNECT OK: BadErrorText" in app.logs
+    assert "DISCONNECT: BadErrorText" in app.logs
+
+
 def test_disconnect_status_update_failure_does_not_skip_log():
     app = make_headless_gui()
     app.status_var = FailingSetVar()
@@ -738,6 +750,25 @@ def test_query_done_adds_unique_display_macs_to_cumulative_total():
     assert replaced == [
         (["aa-bb-cc-00-00-01", "aa:bb:cc:00:00:01", "aa:bb:cc:00:00:02"], "삭제 대상", {"type_na_macs": []})
     ]
+
+
+def test_query_progress_handles_unprintable_payload_without_losing_log():
+    app = make_headless_gui()
+    replaced = []
+    app._replace_table = lambda macs, status, **kwargs: replaced.append((macs, status, kwargs))
+
+    ArubaMmCleanupGui._handle_progress(app, "query_start", {"command": BadErrorText()})
+    ArubaMmCleanupGui._handle_progress(
+        app,
+        "query_done",
+        {"count": BadErrorText(), "macs": ["aa:bb:cc:00:00:01"]},
+    )
+
+    assert app.status_var.get() == "global-user-table 조회 중"
+    assert app.timers[-1] == ("실행 중", "조회 처리")
+    assert "QUERY: BadErrorText" in app.logs
+    assert "QUERY DONE: BadErrorText MAC(s)" in app.logs
+    assert replaced == [(["aa:bb:cc:00:00:01"], "삭제 대상", {"type_na_macs": []})]
 
 
 def test_query_done_ignores_string_macs_payload_without_character_rows():
