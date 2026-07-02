@@ -662,6 +662,29 @@ def test_query_done_marks_type_na_rows_and_logs_admin_guidance():
     assert "TYPE N/A: aa:bb:cc:00:00:02 - 관리자 직접 장비 지정 필요" in app.logs
 
 
+def test_query_done_skips_bad_type_na_mac_text_without_stopping_table_update():
+    class BadText:
+        def __str__(self):
+            raise RuntimeError("bad type")
+
+    app = make_headless_gui()
+    app.table = FakeTreeTable()
+
+    app._handle_progress(
+        "query_done",
+        {
+            "count": 2,
+            "macs": ["aa:bb:cc:00:00:01", "aa:bb:cc:00:00:02"],
+            "type_na_macs": [BadText(), "aa:bb:cc:00:00:02"],
+        },
+    )
+
+    assert app.counter_vars["queried"].get() == "9"
+    assert app.table.rows["aa:bb:cc:00:00:01"]["values"][4] == ""
+    assert app.table.rows["aa:bb:cc:00:00:02"]["values"][4] == TYPE_NA_MESSAGE
+    assert "TYPE N/A: aa:bb:cc:00:00:02 - 관리자 직접 장비 지정 필요" in app.logs
+
+
 def test_reappeared_macs_ignores_string_payload_without_character_rows():
     app = make_headless_gui()
 
