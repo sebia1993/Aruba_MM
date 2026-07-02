@@ -1401,6 +1401,38 @@ def test_append_history_rows_ignores_invalid_reappeared_mac_items():
     )
 
 
+def test_append_history_rows_handles_started_at_format_failure():
+    class BrokenStartedAt:
+        def strftime(self, _format):
+            raise RuntimeError("bad started_at")
+
+    app = make_headless_gui()
+    app.history_table = FakeHistoryTable()
+    app.history_row_counter = 0
+    summary = SimpleNamespace(
+        started_at=BrokenStartedAt(),
+        reappeared_macs=[],
+        delete_results=[
+            SimpleNamespace(
+                mac="aa:bb:cc:00:00:01",
+                status="verified_deleted",
+                success=True,
+                error="",
+            )
+        ],
+    )
+
+    ArubaMmCleanupGui._append_history_rows(app, summary)
+
+    row_id = app.history_table.get_children()[0]
+    assert app.history_table.rows[row_id]["values"] == (
+        "",
+        "aa:bb:cc:00:00:01",
+        "삭제 완료",
+        "",
+    )
+
+
 def test_summary_updates_simple_dashboard_cards_with_final_values():
     app = make_headless_gui()
     summary = SimpleNamespace(

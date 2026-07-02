@@ -1168,11 +1168,14 @@ class ArubaMmCleanupGui(tk.Tk):
         if not isinstance(delete_results, (list, tuple)) or not delete_results:
             return
         started_at = getattr(summary, "started_at", None)
-        run_at = (
-            started_at.strftime("%Y-%m-%d %H:%M:%S")
-            if callable(getattr(started_at, "strftime", None))
-            else ""
-        )
+        try:
+            run_at = (
+                started_at.strftime("%Y-%m-%d %H:%M:%S")
+                if callable(getattr(started_at, "strftime", None))
+                else ""
+            )
+        except Exception:
+            run_at = ""
         raw_reappeared_macs = getattr(summary, "reappeared_macs", []) or []
         reappeared_macs = (
             set(_unique_display_macs([mac for mac in raw_reappeared_macs if isinstance(mac, str)]))
