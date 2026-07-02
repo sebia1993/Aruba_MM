@@ -1495,7 +1495,7 @@ def _merge_status_message(existing: str, update: str) -> str:
 def _safe_int(value: object) -> int:
     try:
         return int(str(value))
-    except (TypeError, ValueError):
+    except Exception:
         return 0
 
 

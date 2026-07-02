@@ -1764,6 +1764,33 @@ def test_summary_handles_invalid_delete_success_count_as_zero():
     assert app.status_var.get() == "완료"
 
 
+def test_summary_handles_count_values_with_failing_string_conversion():
+    class BadCount:
+        def __str__(self):
+            raise RuntimeError("bad count")
+
+    app = make_headless_gui()
+    summary = SimpleNamespace(
+        target_macs=[],
+        queried_count=BadCount(),
+        delete_success_count=BadCount(),
+        reappeared_count=0,
+        verification_skipped=False,
+        error="",
+        canceled=False,
+        reappeared_macs=[],
+        audit_path=None,
+        audit_error="",
+        history_error="",
+    )
+
+    app._handle_summary(summary)
+
+    assert app.counter_vars["queried"].get() == "7"
+    assert app.counter_vars["deleted"].get() == "3"
+    assert app.status_var.get() == "완료"
+
+
 def test_summary_ignores_string_target_macs_without_character_counting():
     app = make_headless_gui()
     summary = SimpleNamespace(
