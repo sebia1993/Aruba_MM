@@ -22,6 +22,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     parser.add_argument("--output-dir", type=Path, default=Path("outputs"), help="audit output directory")
     parser.add_argument("--yes", action="store_true", help="run without an interactive pre-countdown confirmation")
     args = parser.parse_args(argv)
+    if args.port < 1 or args.port > 65535:
+        parser.error("--port must be between 1 and 65535")
 
     password = args.password if args.password is not None else getpass.getpass("Password: ")
     if not args.yes:

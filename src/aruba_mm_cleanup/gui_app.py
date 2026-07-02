@@ -701,6 +701,8 @@ class ArubaMmCleanupGui(tk.Tk):
             port = int(self.port_var.get().strip() or "22")
         except ValueError as exc:
             raise ValueError("Port는 숫자로 입력하세요.") from exc
+        if port < 1 or port > 65535:
+            raise ValueError("Port는 1부터 65535 사이 숫자로 입력하세요.")
         try:
             timeout = max(5, int(self.timeout_var.get().strip() or "60"))
         except ValueError as exc:

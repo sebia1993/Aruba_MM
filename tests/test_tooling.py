@@ -47,6 +47,32 @@ def test_cli_help_distinguishes_timeout_from_delete_delay():
     assert "countdown seconds between query and delete" in output
 
 
+def test_cli_rejects_out_of_range_port_before_connecting():
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "aruba_mm_cleanup.cli",
+            "--host",
+            "192.0.2.10",
+            "--username",
+            "admin",
+            "--password",
+            "secret",
+            "--port",
+            "0",
+            "--yes",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    output = completed.stdout + completed.stderr
+    assert completed.returncode == 2, output
+    assert "--port must be between 1 and 65535" in output
+
+
 def test_windows_build_and_docs_reference_current_exe_names():
     repo_root = Path(__file__).parents[1]
     build_script = (repo_root / "build_windows_gui_exe.ps1").read_text(encoding="utf-8")

@@ -237,6 +237,15 @@ def test_read_inputs_reports_clear_timeout_errors():
         ArubaMmCleanupGui._read_inputs(app)
 
 
+@pytest.mark.parametrize("value", ["0", "-1", "65536"])
+def test_read_inputs_rejects_out_of_range_ports(value):
+    app = make_input_gui()
+    app.port_var.set(value)
+
+    with pytest.raises(ValueError, match="Port"):
+        ArubaMmCleanupGui._read_inputs(app)
+
+
 def test_read_interval_uses_actual_input_value():
     app = make_input_gui()
     app.interval_var.set("1")
