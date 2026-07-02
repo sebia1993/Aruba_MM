@@ -33,7 +33,10 @@ HISTORY_FILE_NAME = "deletion_history.jsonl"
 def build_query_command(role: str) -> str:
     if not isinstance(role, str):
         raise ValueError("Role이 올바르지 않습니다.")
-    role_value = role.strip() or "profiling"
+    try:
+        role_value = role.strip() or "profiling"
+    except Exception as exc:
+        raise ValueError("Role이 올바르지 않습니다.") from exc
     if _has_control_character(role_value):
         raise ValueError("Role에는 제어 문자를 사용할 수 없습니다.")
     return f"show global-user-table list role {role_value}"
