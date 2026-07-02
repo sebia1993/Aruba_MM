@@ -149,6 +149,16 @@ class DeleteFailingLogText(FakeLogText):
         raise tk.TclError("invalid command name")
 
 
+class InsertFailingLogText(FakeLogText):
+    def insert(self, _index, _text):
+        raise tk.TclError("invalid command name")
+
+
+class ConfigureFailingLogText(FakeLogText):
+    def configure(self, **_kwargs):
+        raise tk.TclError("invalid command name")
+
+
 class FakeOverlayFrame:
     def __init__(self):
         self.place_calls = []
@@ -948,6 +958,25 @@ def test_log_stays_disabled_when_cap_delete_fails():
 
     assert app.log_text.lines[-1].endswith("line still recorded")
     assert app.log_text.state == "disabled"
+
+
+def test_log_restores_disabled_state_when_insert_fails():
+    app = make_headless_gui()
+    app.log_text = InsertFailingLogText()
+
+    ArubaMmCleanupGui._log(app, "line cannot be inserted")
+
+    assert app.log_text.state == "disabled"
+    assert app.log_text.lines == []
+
+
+def test_log_ignores_destroyed_log_widget():
+    app = make_headless_gui()
+    app.log_text = ConfigureFailingLogText()
+
+    ArubaMmCleanupGui._log(app, "line cannot be written")
+
+    assert app.log_text.lines == []
 
 
 def test_clear_log_restores_disabled_state_when_delete_fails():

@@ -1033,11 +1033,18 @@ class ArubaMmCleanupGui(tk.Tk):
             self.history_table.delete(*children[:overflow])
 
     def _log(self, message: str) -> None:
-        self.log_text.configure(state="normal")
-        self.log_text.insert("end", f"{time.strftime('%H:%M:%S')} {message}\n")
-        self._cap_log_lines()
-        self.log_text.see("end")
-        self.log_text.configure(state="disabled")
+        try:
+            self.log_text.configure(state="normal")
+            self.log_text.insert("end", f"{time.strftime('%H:%M:%S')} {message}\n")
+            self._cap_log_lines()
+            self.log_text.see("end")
+        except tk.TclError:
+            pass
+        finally:
+            try:
+                self.log_text.configure(state="disabled")
+            except tk.TclError:
+                pass
 
     def _cap_log_lines(self) -> None:
         try:
