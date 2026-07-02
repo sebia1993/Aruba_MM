@@ -414,6 +414,17 @@ def test_drain_events_logs_bad_event_and_continues():
     assert app.scheduled_callbacks[-1][0] == 150
 
 
+def test_drain_events_handles_missing_progress_payload_as_empty_dict():
+    app = make_headless_gui()
+    app.event_queue.put(("progress", ("connect_start", None)))
+
+    ArubaMmCleanupGui._drain_events(app)
+
+    assert app.status_var.get() == "MM 접속 중"
+    assert "CONNECT: None" in app.logs
+    assert not any("이벤트 처리 실패(progress)" in message for message in app.logs)
+
+
 def test_on_close_sets_flags_and_schedules_bounded_destroy_without_direct_close():
     app = make_headless_gui()
     app._drain_after_id = "drain-id"

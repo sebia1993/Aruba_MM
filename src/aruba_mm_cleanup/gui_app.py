@@ -747,6 +747,8 @@ class ArubaMmCleanupGui(tk.Tk):
                         self._set_running(bool(payload))
                     elif event == "progress":
                         progress_event, progress_payload = payload
+                        if not isinstance(progress_payload, dict):
+                            progress_payload = {}
                         self._handle_progress(str(progress_event), progress_payload)
                     elif event == "summary":
                         self._handle_summary(payload)
