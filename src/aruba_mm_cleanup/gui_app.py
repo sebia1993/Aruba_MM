@@ -29,6 +29,8 @@ BODY = "#393c41"
 MUTED = "#5c5e62"
 ACCENT = "#3e6ae1"
 DANGER = "#b42318"
+DANGER_ACTIVE = "#8f1d14"
+DANGER_SOFT = "#fff4f2"
 LINE = "#eeeeee"
 FIELD_BG = "#fafafa"
 CARD_BG = "#ffffff"
@@ -70,8 +72,8 @@ class ArubaMmCleanupGui(tk.Tk):
         self.interval_var = tk.StringVar(value=str(DEFAULT_INTERVAL_SECONDS))
         self.output_dir_var = tk.StringVar(value=str(DEFAULT_OUTPUT_DIR))
         self.status_var = tk.StringVar(value="대기 중")
-        self.countdown_var = tk.StringVar(value="-")
-        self.next_run_var = tk.StringVar(value="-")
+        self.timer_value_var = tk.StringVar(value="-")
+        self.timer_state_var = tk.StringVar(value="대기")
         self.counter_vars = {
             "queried": tk.StringVar(value="0"),
             "deleted": tk.StringVar(value="0"),
@@ -316,7 +318,7 @@ class ArubaMmCleanupGui(tk.Tk):
         self._card(frame, "삭제 실패", self.counter_vars["failed"], 2, DANGER)
         self._card(frame, "남은 MAC", self.counter_vars["remaining"], 3, TEXT)
         self._card(frame, "재조회", self.counter_vars["reappeared"], 4, DANGER)
-        self._card(frame, "카운트다운", self.countdown_var, 5, ACCENT)
+        self._timer_card(frame, 5)
 
     def _card(self, parent: tk.Widget, title: str, variable: tk.StringVar, column: int, color: str) -> None:
         card = tk.Frame(parent, bg=CARD_BG, highlightbackground=LINE, highlightthickness=1)
@@ -324,6 +326,19 @@ class ArubaMmCleanupGui(tk.Tk):
         tk.Label(card, text=title, bg=CARD_BG, fg=MUTED, font=("Segoe UI", 9)).pack(anchor="w", padx=16, pady=(12, 0))
         tk.Label(card, textvariable=variable, bg=CARD_BG, fg=color, font=("Segoe UI Semibold", 24)).pack(
             anchor="w", padx=16, pady=(0, 12)
+        )
+
+    def _timer_card(self, parent: tk.Widget, column: int) -> None:
+        card = tk.Frame(parent, bg=CARD_BG, highlightbackground=LINE, highlightthickness=1)
+        card.grid(row=0, column=column, sticky="ew", padx=(8, 0))
+        tk.Label(card, text="타이머", bg=CARD_BG, fg=MUTED, font=("Segoe UI", 9)).pack(
+            anchor="w", padx=16, pady=(12, 0)
+        )
+        tk.Label(card, textvariable=self.timer_value_var, bg=CARD_BG, fg=ACCENT, font=("Segoe UI Semibold", 20)).pack(
+            anchor="w", padx=16, pady=(0, 0)
+        )
+        tk.Label(card, textvariable=self.timer_state_var, bg=CARD_BG, fg=MUTED, font=("Segoe UI", 9)).pack(
+            anchor="w", padx=16, pady=(0, 10)
         )
 
     def _build_results(self, parent: tk.Widget) -> None:
@@ -335,7 +350,6 @@ class ArubaMmCleanupGui(tk.Tk):
         top = tk.Frame(frame, bg=PANEL)
         top.grid(row=0, column=0, sticky="ew", padx=16, pady=(14, 8))
         tk.Label(top, text="삭제 대상 및 결과", bg=PANEL, fg=TEXT, font=("Segoe UI Semibold", 12)).pack(side="left")
-        tk.Label(top, textvariable=self.next_run_var, bg=PANEL, fg=MUTED, font=("Segoe UI", 10)).pack(side="right")
         columns = ("mac", "status", "queried_at", "deleted_at", "error")
         self.table = ttk.Treeview(frame, columns=columns, show="headings", height=9)
         headings = {
@@ -353,22 +367,15 @@ class ArubaMmCleanupGui(tk.Tk):
         self.table.grid(row=1, column=0, sticky="nsew", padx=16, pady=(0, 12))
 
         history_top = tk.Frame(frame, bg=PANEL)
-        history_top.grid(row=2, column=0, sticky="ew", padx=16, pady=(0, 8))
+        history_top.grid(row=2, column=0, sticky="ew", padx=16, pady=(4, 10))
         tk.Label(history_top, text="최근 삭제 이력", bg=PANEL, fg=TEXT, font=("Segoe UI Semibold", 12)).pack(
             side="left"
         )
-        tk.Button(
+        self._action_button(
             history_top,
-            text="이력 지우기",
-            command=self.clear_history,
-            bg=SECONDARY_BG,
-            fg=TEXT,
-            activebackground=SECONDARY_ACTIVE,
-            activeforeground=TEXT,
-            relief="flat",
-            bd=0,
-            highlightthickness=0,
-            font=("Segoe UI Semibold", 10),
+            "이력 전체 지우기",
+            self.clear_history,
+            variant="danger_outline",
         ).pack(side="right")
         history_columns = ("run_at", "mac", "result", "error")
         self.history_table = ttk.Treeview(frame, columns=history_columns, show="headings", height=4)
@@ -391,33 +398,19 @@ class ArubaMmCleanupGui(tk.Tk):
         frame.grid_columnconfigure(0, weight=1)
         button_row = tk.Frame(frame, bg=PANEL)
         button_row.grid(row=0, column=0, sticky="ew", padx=16, pady=(12, 0))
-        self.cancel_button = tk.Button(
+        self.cancel_button = self._action_button(
             button_row,
-            text="이번 삭제 취소",
-            command=self.cancel_current_delete,
+            "이번 삭제 취소",
+            self.cancel_current_delete,
             state="disabled",
-            bg=DANGER,
-            fg="#ffffff",
-            activebackground="#8f1d14",
-            activeforeground="#ffffff",
-            relief="flat",
-            bd=0,
-            highlightthickness=0,
-            font=("Segoe UI Semibold", 10),
+            variant="danger",
         )
         self.cancel_button.pack(side="left")
-        tk.Button(
+        self._action_button(
             button_row,
-            text="로그 지우기",
-            command=self.clear_log,
-            bg=SECONDARY_BG,
-            fg=TEXT,
-            activebackground=SECONDARY_ACTIVE,
-            activeforeground=TEXT,
-            relief="flat",
-            bd=0,
-            highlightthickness=0,
-            font=("Segoe UI Semibold", 10),
+            "로그 지우기",
+            self.clear_log,
+            variant="secondary",
         ).pack(side="right")
         self.log_text = tk.Text(
             frame,
@@ -433,6 +426,60 @@ class ArubaMmCleanupGui(tk.Tk):
 
     def _panel(self, parent: tk.Widget) -> tk.Frame:
         return tk.Frame(parent, bg=PANEL, highlightbackground=LINE, highlightthickness=1)
+
+    def _action_button(
+        self,
+        parent: tk.Widget,
+        text: str,
+        command,
+        *,
+        state: str = "normal",
+        variant: str = "secondary",
+    ) -> tk.Button:
+        if variant == "danger":
+            background = DANGER
+            foreground = "#ffffff"
+            active_background = DANGER_ACTIVE
+            active_foreground = "#ffffff"
+            disabled_foreground = "#f7d6d2"
+            highlight_thickness = 0
+            highlight_background = background
+        elif variant == "danger_outline":
+            background = PANEL
+            foreground = DANGER
+            active_background = DANGER_SOFT
+            active_foreground = DANGER
+            disabled_foreground = DISABLED
+            highlight_thickness = 1
+            highlight_background = DANGER
+        else:
+            background = SECONDARY_BG
+            foreground = TEXT
+            active_background = SECONDARY_ACTIVE
+            active_foreground = TEXT
+            disabled_foreground = DISABLED
+            highlight_thickness = 0
+            highlight_background = background
+        return tk.Button(
+            parent,
+            text=text,
+            command=command,
+            state=state,
+            bg=background,
+            fg=foreground,
+            disabledforeground=disabled_foreground,
+            activebackground=active_background,
+            activeforeground=active_foreground,
+            relief="flat",
+            bd=0,
+            highlightthickness=highlight_thickness,
+            highlightbackground=highlight_background,
+            highlightcolor=highlight_background,
+            font=("Segoe UI Semibold", 10),
+            padx=16,
+            pady=9,
+            cursor="hand2",
+        )
 
     def browse_output_dir(self) -> None:
         selected = filedialog.askdirectory(initialdir=self.output_dir_var.get() or str(DEFAULT_OUTPUT_DIR))
@@ -491,7 +538,7 @@ class ArubaMmCleanupGui(tk.Tk):
         self.manual_button.configure(state="disabled" if self.is_running else "normal")
         self.schedule_button.configure(state="disabled" if self.is_running else "normal")
         self.stop_schedule_button.configure(state="disabled")
-        self.next_run_var.set("-")
+        self._set_timer("-", "대기")
         self._sync_settings_visibility()
         self._log("주기 실행 정지 요청")
 
@@ -530,7 +577,7 @@ class ArubaMmCleanupGui(tk.Tk):
             for remaining in range(interval, 0, -1):
                 if self.scheduler_stop_event.is_set():
                     break
-                self.event_queue.put(("next_run", f"다음 실행: {remaining}초 후"))
+                self.event_queue.put(("next_run", remaining))
                 time.sleep(1)
         self.event_queue.put(("scheduler_stopped", None))
 
@@ -612,13 +659,13 @@ class ArubaMmCleanupGui(tk.Tk):
                 elif event == "summary":
                     self._handle_summary(payload)
                 elif event == "next_run":
-                    self.next_run_var.set(str(payload))
+                    self._set_timer(f"{payload}s", "다음 실행")
                 elif event == "scheduler_stopped":
                     self.scheduler_running = False
                     self.manual_button.configure(state="disabled" if self.is_running else "normal")
                     self.schedule_button.configure(state="disabled" if self.is_running else "normal")
                     self.stop_schedule_button.configure(state="disabled")
-                    self.next_run_var.set("-")
+                    self._set_timer("-", "대기")
                     self._sync_settings_visibility()
         except queue.Empty:
             pass
@@ -641,6 +688,7 @@ class ArubaMmCleanupGui(tk.Tk):
             self._log(f"WARNING: {payload.get('message')}")
         elif event == "query_start":
             self.status_var.set("global-user-table 조회 중")
+            self._set_timer("실행 중", "조회 처리")
             self._log(f"QUERY: {payload.get('command')}")
         elif event == "query_done":
             macs = list(payload.get("macs") or [])
@@ -649,11 +697,12 @@ class ArubaMmCleanupGui(tk.Tk):
             self._log(f"QUERY DONE: {payload.get('count', 0)} MAC(s)")
         elif event == "countdown":
             remaining = int(payload.get("remaining", 0))
-            self.countdown_var.set(f"{remaining}s")
+            self._set_timer(f"{remaining}s", "삭제 대기" if remaining > 0 else "삭제 시작")
             self.status_var.set(f"{remaining}초 후 자동 삭제")
             self.cancel_button.configure(state="normal" if remaining > 0 else "disabled")
         elif event == "delete_start":
             self.status_var.set("MAC 삭제 중")
+            self._set_timer("실행 중", "삭제 처리")
             self._set_row_status(str(payload.get("mac")), "삭제 중", "")
             self._log(f"DELETE START: {payload.get('mac')}")
         elif event == "delete_done":
@@ -674,12 +723,13 @@ class ArubaMmCleanupGui(tk.Tk):
                 self._log(f"REAPPEARED: {mac}")
         elif event == "delete_canceled":
             self.status_var.set("이번 삭제 취소됨")
-            self.countdown_var.set("-")
+            self._set_timer("-", "대기")
             self.cancel_button.configure(state="disabled")
             self._set_all_pending_status("취소됨")
             self._log(f"CANCELED: {payload.get('count')} pending MAC(s)")
         elif event == "run_error":
             self.status_var.set("실패")
+            self._set_timer("-", "대기")
             self.cancel_button.configure(state="disabled")
             self._log(f"ERROR: {payload.get('error')}")
 
@@ -689,7 +739,7 @@ class ArubaMmCleanupGui(tk.Tk):
         self.counter_vars["failed"].set(str(summary.delete_failure_count))
         self.counter_vars["remaining"].set(str(summary.remaining_count))
         self.counter_vars["reappeared"].set(str(summary.reappeared_count))
-        self.countdown_var.set("-")
+        self._set_timer("-", "대기")
         self.cancel_button.configure(state="disabled")
         if summary.error:
             self.status_var.set("실패")
@@ -745,8 +795,15 @@ class ArubaMmCleanupGui(tk.Tk):
         self.manual_button.configure(state="disabled" if running or self.scheduler_running else "normal")
         self.schedule_button.configure(state="disabled" if running or self.scheduler_running else "normal")
         if running:
+            self._set_timer("실행 중", "조회/삭제 처리")
             self.cancel_button.configure(state="disabled")
+        elif not self.scheduler_running:
+            self._set_timer("-", "대기")
         self._sync_settings_visibility()
+
+    def _set_timer(self, value: str, state: str) -> None:
+        self.timer_value_var.set(value)
+        self.timer_state_var.set(state)
 
     def _sync_settings_visibility(self) -> None:
         if self.settings_frame is None:

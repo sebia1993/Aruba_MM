@@ -6,6 +6,8 @@ from aruba_mm_cleanup.gui_app import (
     APP_TITLE,
     BG,
     CARD_BG,
+    DANGER_ACTIVE,
+    DANGER_SOFT,
     DEFAULT_INTERVAL_SECONDS,
     DEFAULT_ROLE,
     DELETE_DELAY_SECONDS,
@@ -20,6 +22,8 @@ def test_version_and_gui_constants():
     assert __version__ == "0.1.0"
     assert APP_TITLE == "Aruba MM Cleanup Dashboard"
     assert ACCENT == "#3e6ae1"
+    assert DANGER_ACTIVE == "#8f1d14"
+    assert DANGER_SOFT == "#fff4f2"
     assert BG == "#f4f4f4"
     assert TEXT == "#171a20"
     assert CARD_BG == "#ffffff"
@@ -46,6 +50,9 @@ def test_gui_has_manual_scheduler_and_cancel_controls():
     assert "_append_history_rows" in source
     assert "_cap_history_rows" in source
     assert "_mark_reappeared_rows" in source
+    assert "_action_button" in source
+    assert "_timer_card" in source
+    assert "_set_timer" in source
     assert "history_row_counter" in source
     assert "runner_lock" in source
     assert "with self.runner_lock" in source
@@ -57,11 +64,19 @@ def test_gui_has_manual_scheduler_and_cancel_controls():
     assert "확인 필요" in source
     assert "if self.scheduler_running" in source
     assert "variant=\"secondary\"" in source
+    assert "variant=\"danger\"" in source
+    assert "variant=\"danger_outline\"" in source
     assert "이번 삭제 취소" in source
     assert "세션 연결 해제" in source
     assert "주기 실행 시작" in source
     assert "최근 삭제 이력" in source
-    assert "이력 지우기" in source
+    assert "이력 전체 지우기" in source
+    assert "타이머" in source
+    assert "삭제 대기" in source
+    assert "다음 실행" in source
+    assert "조회/삭제 처리" in source
+    assert "next_run_var" not in source
+    assert "countdown_var" not in source
     assert "조회" in source
     assert "삭제 성공" in source
     assert "삭제 실패" in source
