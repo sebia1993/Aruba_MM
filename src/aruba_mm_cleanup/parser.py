@@ -117,6 +117,8 @@ def _probable_role_token(tokens: list[str], mac_index: int) -> str:
     candidate_index = mac_index + 2
     if candidate_index >= len(tokens):
         return ""
+    if normalize_mac(tokens[candidate_index - 1]):
+        return ""
     token = tokens[candidate_index].strip()
     if not token or token.isdigit() or normalize_mac(token) or _IPV4_PATTERN.fullmatch(token):
         return ""

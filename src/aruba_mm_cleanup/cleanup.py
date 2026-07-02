@@ -132,10 +132,17 @@ class MmCleanupRunner:
             command = build_delete_command(mac)
             self._emit(progress_callback, "delete_start", index=index, total=len(unique_macs), mac=mac, command=command)
             try:
-                output = self.session.run_command(config, settings, command, progress_callback=progress_callback)
+                output = self.session.run_command(
+                    config,
+                    settings,
+                    command,
+                    progress_callback=progress_callback,
+                    retry_once=False,
+                )
                 error = _delete_error_from_output(output)
                 success = not error
-                results.append(DeleteResult(mac=mac, success=success, command=command, error=error))
+                status = "deleted" if success else "failed"
+                results.append(DeleteResult(mac=mac, success=success, command=command, error=error, status=status))
                 self._emit(
                     progress_callback,
                     "delete_done" if success else "delete_error",
@@ -146,11 +153,11 @@ class MmCleanupRunner:
                     error=error,
                 )
             except Exception as exc:
-                error = str(exc)
-                results.append(DeleteResult(mac=mac, success=False, command=command, error=error))
+                error = f"확인 필요: 삭제 명령 응답 실패 - {exc}"
+                results.append(DeleteResult(mac=mac, success=False, command=command, error=error, status="unknown"))
                 self._emit(
                     progress_callback,
-                    "delete_error",
+                    "delete_unknown",
                     index=index,
                     total=len(unique_macs),
                     mac=mac,
@@ -195,7 +202,11 @@ class MmCleanupRunner:
     ) -> CleanupRunSummary:
         if not self.persistent_session:
             self.close_session(progress_callback=progress_callback, reason="run_complete")
-        summary.audit_path = write_audit_summary(summary, output_dir=output_dir, host=host)
+        try:
+            summary.audit_path = write_audit_summary(summary, output_dir=output_dir, host=host)
+        except Exception as exc:
+            summary.audit_error = str(exc)
+            self._emit(progress_callback, "warning", message=f"audit summary save failed: {exc}")
         return summary
 
     @staticmethod

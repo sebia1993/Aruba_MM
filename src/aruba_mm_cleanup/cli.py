@@ -54,6 +54,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     print(f"Failed: {summary.delete_failure_count}")
     print(f"Remaining: {summary.remaining_count}")
     print(f"Audit: {summary.audit_path}")
+    if summary.audit_error:
+        print(f"Audit warning: {summary.audit_error}")
     return 1 if summary.error or summary.delete_failure_count else 0
 
 

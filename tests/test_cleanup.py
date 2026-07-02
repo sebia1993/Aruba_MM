@@ -228,3 +228,52 @@ def test_delete_macs_sends_one_command_per_normalized_mac():
     assert len(results) == 1
     assert results[0].success is True
     assert connection.commands.count("aaa user delete mac aa:bb:cc:00:00:01") == 1
+
+
+def test_delete_command_exception_is_unknown_without_retry():
+    command = "aaa user delete mac aa:bb:cc:00:00:01"
+    connection = FakeConnection(responses={"no paging": ""}, failures={command: RuntimeError("socket timeout")})
+    events = []
+    runner = MmCleanupRunner(
+        connection_factory=lambda _config, _timeout: connection,
+        sleep_func=lambda _seconds: None,
+    )
+
+    results = runner._delete_macs(
+        MmConnectionConfig(host="192.0.2.10", username="admin", password="secret"),
+        CleanupSettings(role="profiling", timeout=5, delete_delay_seconds=0),
+        ["aa:bb:cc:00:00:01"],
+        lambda event, payload: events.append((event, payload)),
+    )
+
+    assert len(results) == 1
+    assert results[0].success is False
+    assert results[0].status == "unknown"
+    assert "확인 필요" in results[0].error
+    assert connection.commands.count(command) == 1
+    assert not any(event == "session_reconnect_start" for event, _payload in events)
+    assert any(event == "delete_unknown" for event, _payload in events)
+
+
+def test_audit_save_failure_does_not_break_summary(tmp_path):
+    blocked_output_dir = tmp_path / "not-a-directory"
+    blocked_output_dir.write_text("file blocks directory creation", encoding="utf-8")
+    connection = FakeConnection(responses={"no paging": "", "show global-user-table list role profiling": ""})
+    events = []
+    runner = MmCleanupRunner(
+        connection_factory=lambda _config, _timeout: connection,
+        sleep_func=lambda _seconds: None,
+    )
+
+    summary = runner.run_once(
+        MmConnectionConfig(host="192.0.2.10", username="admin", password="secret"),
+        CleanupSettings(role="profiling", timeout=5, delete_delay_seconds=0),
+        output_dir=blocked_output_dir,
+        progress_callback=lambda event, payload: events.append((event, payload)),
+    )
+
+    assert summary.error == ""
+    assert summary.queried_count == 0
+    assert summary.audit_path is None
+    assert summary.audit_error
+    assert any(event == "warning" and "audit summary save failed" in payload["message"] for event, payload in events)

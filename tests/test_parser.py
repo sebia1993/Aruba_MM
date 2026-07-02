@@ -1,4 +1,9 @@
+from pathlib import Path
+
 from aruba_mm_cleanup.parser import normalize_mac, parse_global_user_table
+
+
+FIXTURE_DIR = Path(__file__).parent / "fixtures"
 
 
 def test_normalize_mac_accepts_common_formats():
@@ -48,3 +53,39 @@ user-a           10.1.1.10       aa:bb:cc:00:00:01  11:22:33:44:55:66
 
     assert [entry.mac for entry in entries] == ["aa:bb:cc:00:00:01"]
 
+
+def test_parse_sanitized_aruba_standard_fixture_ignores_bssid_and_other_roles():
+    output = (FIXTURE_DIR / "aruba_global_user_table_standard.txt").read_text(encoding="utf-8")
+
+    entries = parse_global_user_table(output, role_filter="profiling")
+
+    assert [entry.mac for entry in entries] == [
+        "aa:bb:cc:00:10:01",
+        "aa:bb:cc:00:10:02",
+    ]
+    assert "11:22:33:44:55:66" not in [entry.mac for entry in entries]
+    assert "aa:bb:cc:00:10:03" not in [entry.mac for entry in entries]
+
+
+def test_parse_sanitized_aruba_compact_fixture_accepts_role_filtered_rows_with_ap_name():
+    output = (FIXTURE_DIR / "aruba_global_user_table_filtered_compact.txt").read_text(encoding="utf-8")
+
+    entries = parse_global_user_table(output, role_filter="profiling")
+
+    assert [entry.mac for entry in entries] == [
+        "aa:bb:cc:00:20:01",
+        "aa:bb:cc:00:20:02",
+    ]
+    assert "44:55:66:77:88:99" not in [entry.mac for entry in entries]
+
+
+def test_parse_sanitized_aruba_dotted_fixture_ignores_ap_radio_mac():
+    output = (FIXTURE_DIR / "aruba_global_user_table_dotted.txt").read_text(encoding="utf-8")
+
+    entries = parse_global_user_table(output, role_filter="profiling")
+
+    assert [entry.mac for entry in entries] == [
+        "aa:bb:cc:00:30:01",
+        "aa:bb:cc:00:30:02",
+    ]
+    assert "66:77:88:99:aa:bb" not in [entry.mac for entry in entries]

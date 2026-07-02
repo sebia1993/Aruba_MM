@@ -9,6 +9,7 @@ from aruba_mm_cleanup.gui_app import (
     DEFAULT_INTERVAL_SECONDS,
     DEFAULT_ROLE,
     DELETE_DELAY_SECONDS,
+    MAX_HISTORY_ROWS,
     MIN_INTERVAL_SECONDS,
     TEXT,
     ArubaMmCleanupGui,
@@ -24,6 +25,7 @@ def test_version_and_gui_constants():
     assert CARD_BG == "#ffffff"
     assert DEFAULT_ROLE == "profiling"
     assert DELETE_DELAY_SECONDS == 60
+    assert MAX_HISTORY_ROWS == 500
     assert DEFAULT_INTERVAL_SECONDS == 300
     assert MIN_INTERVAL_SECONDS == 60
 
@@ -42,6 +44,13 @@ def test_gui_has_manual_scheduler_and_cancel_controls():
     assert "grid_remove" in source
     assert "_sync_settings_visibility" in source
     assert "_append_history_rows" in source
+    assert "_cap_history_rows" in source
+    assert "history_row_counter" in source
+    assert "runner_lock" in source
+    assert "with self.runner_lock" in source
+    assert "delete_unknown" in source
+    assert "확인 필요" in source
+    assert "if self.scheduler_running" in source
     assert "variant=\"secondary\"" in source
     assert "이번 삭제 취소" in source
     assert "세션 연결 해제" in source

@@ -1,0 +1,7 @@
+Global User Table
+-----------------
+IP Address      MAC Address          User             Role        VLAN  BSSID              AP Name
+192.0.2.10      aa:bb:cc:00:10:01    sample-user-a    profiling   20    11:22:33:44:55:66  sample-ap-01
+192.0.2.11      aa:bb:cc:00:10:02    sample-user-b    profiling   20    22:33:44:55:66:77  sample-ap-02
+192.0.2.12      aa:bb:cc:00:10:03    sample-user-c    employee    30    33:44:55:66:77:88  sample-ap-03
+Total Users: 3

@@ -1,0 +1,5 @@
+Users for role profiling
+------------------------
+User             IP Address      MAC Address          BSSID              AP Name       Age
+sample-user-d    192.0.2.20      aa-bb-cc-00-20-01    44:55:66:77:88:99  sample-ap-04  12
+sample-user-e    192.0.2.21      AA-BB-CC-00-20-02    55:66:77:88:99:aa  sample-ap-05  18

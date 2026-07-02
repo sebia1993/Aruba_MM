@@ -20,6 +20,7 @@ DEFAULT_ROLE = "profiling"
 DEFAULT_INTERVAL_SECONDS = 300
 MIN_INTERVAL_SECONDS = 60
 DELETE_DELAY_SECONDS = 60
+MAX_HISTORY_ROWS = 500
 
 BG = "#f4f4f4"
 PANEL = "#ffffff"
@@ -55,6 +56,8 @@ class ArubaMmCleanupGui(tk.Tk):
         self.is_running = False
         self.scheduler_running = False
         self.runner = MmCleanupRunner(persistent_session=True)
+        self.runner_lock = threading.Lock()
+        self.history_row_counter = 0
         self.settings_frame: Optional[tk.Frame] = None
 
         self.host_var = tk.StringVar()
@@ -435,6 +438,9 @@ class ArubaMmCleanupGui(tk.Tk):
     def start_manual_run(self) -> None:
         if self.is_running:
             return
+        if self.scheduler_running:
+            self._log("주기 실행 중에는 1회 실행을 시작할 수 없습니다.")
+            return
         try:
             config, settings, output_dir = self._read_inputs()
         except ValueError as exc:
@@ -452,6 +458,9 @@ class ArubaMmCleanupGui(tk.Tk):
     def start_scheduler(self) -> None:
         if self.scheduler_running:
             return
+        if self.is_running:
+            self._log("실행 중에는 주기 실행을 시작할 수 없습니다.")
+            return
         try:
             config, settings, output_dir = self._read_inputs()
             interval = self._read_interval()
@@ -460,6 +469,7 @@ class ArubaMmCleanupGui(tk.Tk):
             return
         self.scheduler_stop_event.clear()
         self.scheduler_running = True
+        self.manual_button.configure(state="disabled")
         self.schedule_button.configure(state="disabled")
         self.stop_schedule_button.configure(state="normal")
         self._sync_settings_visibility()
@@ -474,7 +484,8 @@ class ArubaMmCleanupGui(tk.Tk):
     def stop_scheduler(self) -> None:
         self.scheduler_stop_event.set()
         self.scheduler_running = False
-        self.schedule_button.configure(state="normal")
+        self.manual_button.configure(state="disabled" if self.is_running else "normal")
+        self.schedule_button.configure(state="disabled" if self.is_running else "normal")
         self.stop_schedule_button.configure(state="disabled")
         self.next_run_var.set("-")
         self._sync_settings_visibility()
@@ -488,17 +499,14 @@ class ArubaMmCleanupGui(tk.Tk):
         if self.is_running:
             self._log("실행 중에는 세션 연결 해제를 건너뜁니다.")
             return
-        self.runner.close_session(
-            progress_callback=lambda event, payload: self.event_queue.put(("progress", (event, payload))),
-            reason="manual",
-        )
+        self._close_runner_session(reason="manual", enqueue_progress=True)
         self.status_var.set("세션 연결 해제")
         self._log("SESSION DISCONNECT REQUEST")
 
     def on_close(self) -> None:
         self.scheduler_stop_event.set()
         self.cancel_event.set()
-        self.runner.close_session(reason="app_close")
+        self._close_runner_session(reason="app_close", enqueue_progress=False)
         self.destroy()
 
     def _scheduler_loop(
@@ -532,14 +540,22 @@ class ArubaMmCleanupGui(tk.Tk):
         def progress(event: str, payload: dict[str, object]) -> None:
             self.event_queue.put(("progress", (event, payload)))
 
-        summary = self.runner.run_once(
-            config,
-            settings,
-            output_dir=output_dir,
-            progress_callback=progress,
-            should_cancel=self.cancel_event.is_set,
-        )
+        with self.runner_lock:
+            summary = self.runner.run_once(
+                config,
+                settings,
+                output_dir=output_dir,
+                progress_callback=progress,
+                should_cancel=self.cancel_event.is_set,
+            )
         self.event_queue.put(("summary", summary))
+
+    def _close_runner_session(self, *, reason: str, enqueue_progress: bool) -> None:
+        progress = None
+        if enqueue_progress:
+            progress = lambda event, payload: self.event_queue.put(("progress", (event, payload)))
+        with self.runner_lock:
+            self.runner.close_session(progress_callback=progress, reason=reason)
 
     def _read_inputs(self) -> tuple[MmConnectionConfig, CleanupSettings, Path]:
         host = self.host_var.get().strip()
@@ -595,7 +611,8 @@ class ArubaMmCleanupGui(tk.Tk):
                     self.next_run_var.set(str(payload))
                 elif event == "scheduler_stopped":
                     self.scheduler_running = False
-                    self.schedule_button.configure(state="normal")
+                    self.manual_button.configure(state="disabled" if self.is_running else "normal")
+                    self.schedule_button.configure(state="disabled" if self.is_running else "normal")
                     self.stop_schedule_button.configure(state="disabled")
                     self.next_run_var.set("-")
                     self._sync_settings_visibility()
@@ -641,6 +658,9 @@ class ArubaMmCleanupGui(tk.Tk):
         elif event == "delete_error":
             self._set_row_status(str(payload.get("mac")), "삭제 실패", str(payload.get("error") or ""))
             self._log(f"DELETE ERROR: {payload.get('mac')} | {payload.get('error')}")
+        elif event == "delete_unknown":
+            self._set_row_status(str(payload.get("mac")), "확인 필요", str(payload.get("error") or ""))
+            self._log(f"DELETE UNKNOWN: {payload.get('mac')} | {payload.get('error')}")
         elif event == "delete_canceled":
             self.status_var.set("이번 삭제 취소됨")
             self.countdown_var.set("-")
@@ -667,6 +687,8 @@ class ArubaMmCleanupGui(tk.Tk):
             self.status_var.set("완료")
         if summary.audit_path:
             self._log(f"AUDIT: {summary.audit_path}")
+        if summary.audit_error:
+            self._log(f"AUDIT WARNING: {summary.audit_error}")
         self._append_history_rows(summary)
 
     def _replace_table(self, macs: list[str], status: str) -> None:
@@ -694,7 +716,8 @@ class ArubaMmCleanupGui(tk.Tk):
 
     def _set_running(self, running: bool) -> None:
         self.is_running = running
-        self.manual_button.configure(state="disabled" if running else "normal")
+        self.manual_button.configure(state="disabled" if running or self.scheduler_running else "normal")
+        self.schedule_button.configure(state="disabled" if running or self.scheduler_running else "normal")
         if running:
             self.cancel_button.configure(state="disabled")
         self._sync_settings_visibility()
@@ -711,11 +734,21 @@ class ArubaMmCleanupGui(tk.Tk):
         if not summary.delete_results:
             return
         run_at = summary.started_at.strftime("%Y-%m-%d %H:%M:%S")
-        base_index = len(self.history_table.get_children())
-        for offset, item in enumerate(summary.delete_results):
-            result = "삭제 완료" if item.success else "삭제 실패"
-            row_id = f"history-{base_index + offset}"
+        for item in summary.delete_results:
+            if item.status == "unknown":
+                result = "확인 필요"
+            else:
+                result = "삭제 완료" if item.success else "삭제 실패"
+            row_id = f"history-{self.history_row_counter}"
+            self.history_row_counter += 1
             self.history_table.insert("", "end", iid=row_id, values=(run_at, item.mac, result, item.error))
+        self._cap_history_rows()
+
+    def _cap_history_rows(self) -> None:
+        children = self.history_table.get_children()
+        overflow = len(children) - MAX_HISTORY_ROWS
+        if overflow > 0:
+            self.history_table.delete(*children[:overflow])
 
     def _log(self, message: str) -> None:
         self.log_text.configure(state="normal")

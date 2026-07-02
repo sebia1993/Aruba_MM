@@ -49,6 +49,7 @@ class DeleteResult:
     success: bool
     command: str
     error: str = ""
+    status: str = ""
 
 
 @dataclass
@@ -64,6 +65,7 @@ class CleanupRunSummary:
     target_macs: list[str] = field(default_factory=list)
     delete_results: list[DeleteResult] = field(default_factory=list)
     audit_path: Optional[Path] = None
+    audit_error: str = ""
     error: str = ""
 
     def as_audit_dict(self, *, host: str) -> dict[str, Any]:
@@ -82,10 +84,12 @@ class CleanupRunSummary:
                 {
                     "mac": item.mac,
                     "success": item.success,
+                    "status": item.status or ("deleted" if item.success else "failed"),
                     "command": item.command,
                     "error": item.error,
                 }
                 for item in self.delete_results
             ],
+            "audit_error": self.audit_error,
             "error": self.error,
         }

@@ -1,0 +1,6 @@
+Global User Table
+-----------------
+IP Address      MAC Address      User             Role        VLAN  AP Radio MAC
+192.0.2.30      aabb.cc00.3001   sample-user-f    profiling   20    6677.8899.aabb
+192.0.2.31      aabb.cc00.3002   sample-user-g    profiling   20    7788.99aa.bbcc
+192.0.2.32      aabb.cc00.3003   sample-user-h    guest       40    8899.aabb.ccdd
