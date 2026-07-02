@@ -10,6 +10,7 @@ from types import SimpleNamespace
 import pytest
 
 from aruba_mm_cleanup import __version__
+import aruba_mm_cleanup.gui_app as gui_app_module
 from aruba_mm_cleanup.gui_app import (
     ACCENT,
     APP_TITLE,
@@ -545,6 +546,40 @@ def test_on_close_destroys_window_when_shutdown_after_fails():
     assert app.closing is True
     assert close_calls == [{"reason": "app_close", "enqueue_progress": False}]
     assert destroy_calls == ["destroyed"]
+
+
+def test_gui_smoke_main_uses_safe_destroy_when_destroy_raises(monkeypatch):
+    class SmokeApp:
+        def __init__(self):
+            self._drain_after_id = "after-1"
+            self.closing = False
+            self.canceled_after_ids = []
+            self.safe_destroy_calls = 0
+
+        def update_idletasks(self):
+            pass
+
+        def after_cancel(self, after_id):
+            self.canceled_after_ids.append(after_id)
+
+        def destroy(self):
+            raise tk.TclError("invalid command name")
+
+        def _destroy_window(self):
+            self.safe_destroy_calls += 1
+            try:
+                self.destroy()
+            except tk.TclError:
+                pass
+
+    app = SmokeApp()
+    monkeypatch.setenv("ARUBA_MM_CLEANUP_GUI_SMOKE", "1")
+    monkeypatch.setattr(gui_app_module, "ArubaMmCleanupGui", lambda: app)
+
+    assert gui_app_module.main() == 0
+    assert app.closing is True
+    assert app.canceled_after_ids == ["after-1"]
+    assert app.safe_destroy_calls == 1
 
 
 def test_start_session_close_returns_without_waiting_for_runner_lock():

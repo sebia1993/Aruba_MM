@@ -1269,7 +1269,7 @@ def main() -> int:
                 app.after_cancel(app._drain_after_id)
             except tk.TclError:
                 pass
-        app.destroy()
+        app._destroy_window()
         return 0
     app = ArubaMmCleanupGui()
     app.mainloop()
