@@ -755,6 +755,20 @@ def test_classify_delete_response_handles_non_string_output():
     assert "삭제 명령 응답 판정 불가" in error
 
 
+def test_classify_delete_response_handles_unprintable_non_string_output():
+    class BadResponse:
+        def __str__(self):
+            raise RuntimeError("bad str")
+
+        def __repr__(self):
+            raise RuntimeError("bad repr")
+
+    status, error = classify_delete_response(BadResponse())  # type: ignore[arg-type]
+
+    assert status == "unknown"
+    assert "삭제 명령 응답 판정 불가" in error
+
+
 def test_audit_save_failure_does_not_break_summary(tmp_path):
     blocked_output_dir = tmp_path / "not-a-directory"
     blocked_output_dir.write_text("file blocks directory creation", encoding="utf-8")

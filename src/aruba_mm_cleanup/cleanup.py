@@ -17,6 +17,7 @@ from .models import (
     MmConnectionConfig,
     QueryResult,
     _safe_list_items,
+    _safe_text,
     _safe_timestamp_text,
 )
 from .parser import normalize_mac, parse_global_user_table_explained
@@ -425,7 +426,7 @@ def _safe_path_fragment(value: str) -> str:
 
 def classify_delete_response(output: str) -> tuple[str, str]:
     if output is not None and not isinstance(output, str):
-        return "unknown", f"확인 필요: 삭제 명령 응답 판정 불가 - {output}"
+        return "unknown", f"확인 필요: 삭제 명령 응답 판정 불가 - {_safe_text(output)}"
     text = (output or "").strip()
     normalized = text.casefold()
     if not text:
