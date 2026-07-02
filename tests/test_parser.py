@@ -32,6 +32,17 @@ IP              MAC Address          User          Role        VLAN  BSSID
     assert entries[0].username == "user-a"
 
 
+def test_parse_global_user_table_uses_default_role_when_role_filter_is_none():
+    output = """
+10.1.1.10 aa:bb:cc:00:00:01 user-a profiling
+10.1.1.11 aa:bb:cc:00:00:02 user-b employee
+"""
+
+    entries = parse_global_user_table(output, role_filter=None)  # type: ignore[arg-type]
+
+    assert [entry.mac for entry in entries] == ["aa:bb:cc:00:00:01"]
+
+
 def test_parse_global_user_table_records_type_na_from_header():
     header = f"{'IP':<16}{'MAC Address':<21}{'User':<14}{'Role':<12}{'Type':<8}{'BSSID'}"
     output = "\n".join(
