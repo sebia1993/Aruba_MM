@@ -1139,7 +1139,7 @@ class ArubaMmCleanupGui(tk.Tk):
 
     def _count_current_query(self, count: int) -> None:
         self._ensure_cumulative_counters()
-        self.current_run_queried_count = max(int(count), 0)
+        self.current_run_queried_count = max(_safe_int(count), 0)
         if not self.current_run_query_counted:
             self.cumulative_queried_count += self.current_run_queried_count
             self.current_run_query_counted = True

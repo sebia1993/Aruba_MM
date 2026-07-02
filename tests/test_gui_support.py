@@ -747,6 +747,20 @@ def test_running_state_button_failure_still_updates_timer():
     assert app.current_run_query_counted is False
 
 
+def test_count_current_query_handles_bad_count_without_stopping_dashboard():
+    class BadCount:
+        def __str__(self):
+            raise RuntimeError("bad count")
+
+    app = make_headless_gui()
+
+    ArubaMmCleanupGui._count_current_query(app, BadCount())  # type: ignore[arg-type]
+
+    assert app.current_run_queried_count == 0
+    assert app.current_run_query_counted is True
+    assert app.counter_vars["queried"].get() == "7"
+
+
 def test_set_timer_ignores_destroyed_timer_variables():
     app = make_headless_gui()
     app.timer_value_var = FailingSetVar()
