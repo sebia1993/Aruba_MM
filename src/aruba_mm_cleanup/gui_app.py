@@ -939,11 +939,19 @@ class ArubaMmCleanupGui(tk.Tk):
             self._set_row_status(str(payload.get("mac")), "삭제 완료", "")
             self._log(f"DELETE OK: {payload.get('mac')}")
         elif event == "delete_error":
-            self._set_row_status(str(payload.get("mac")), "삭제 실패", str(payload.get("error") or ""))
-            self._log(f"DELETE ERROR: {payload.get('mac')} | {payload.get('error')}")
+            raw_mac = payload.get("mac")
+            raw_error = payload.get("error")
+            mac = "None" if raw_mac is None else (_safe_text(raw_mac) or raw_mac.__class__.__name__)
+            error = "" if raw_error is None else (_safe_text(raw_error) or raw_error.__class__.__name__)
+            self._set_row_status(mac, "삭제 실패", error)
+            self._log(f"DELETE ERROR: {mac} | {error}")
         elif event == "delete_unknown":
-            self._set_row_status(str(payload.get("mac")), "확인 필요", str(payload.get("error") or ""))
-            self._log(f"DELETE UNKNOWN: {payload.get('mac')} | {payload.get('error')}")
+            raw_mac = payload.get("mac")
+            raw_error = payload.get("error")
+            mac = "None" if raw_mac is None else (_safe_text(raw_mac) or raw_mac.__class__.__name__)
+            error = "" if raw_error is None else (_safe_text(raw_error) or raw_error.__class__.__name__)
+            self._set_row_status(mac, "확인 필요", error)
+            self._log(f"DELETE UNKNOWN: {mac} | {error}")
         elif event == "reappeared_macs":
             raw_macs = payload.get("macs")
             macs = []

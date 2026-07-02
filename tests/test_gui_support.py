@@ -588,6 +588,32 @@ def test_delete_progress_events_update_rows_without_confirmed_delete_count():
     ]
 
 
+def test_delete_error_progress_handles_unprintable_error_without_losing_row_or_log():
+    app = make_headless_gui()
+
+    ArubaMmCleanupGui._handle_progress(
+        app,
+        "delete_error",
+        {"mac": "aa:bb:cc:00:00:03", "error": BadErrorText()},
+    )
+
+    assert app.rows == [("aa:bb:cc:00:00:03", "삭제 실패", "BadErrorText")]
+    assert "DELETE ERROR: aa:bb:cc:00:00:03 | BadErrorText" in app.logs
+
+
+def test_delete_unknown_progress_handles_unprintable_error_without_losing_row_or_log():
+    app = make_headless_gui()
+
+    ArubaMmCleanupGui._handle_progress(
+        app,
+        "delete_unknown",
+        {"mac": "aa:bb:cc:00:00:04", "error": BadErrorText()},
+    )
+
+    assert app.rows == [("aa:bb:cc:00:00:04", "확인 필요", "BadErrorText")]
+    assert "DELETE UNKNOWN: aa:bb:cc:00:00:04 | BadErrorText" in app.logs
+
+
 def test_progress_status_update_failure_does_not_skip_followup_work():
     app = make_headless_gui()
     app.status_var = FailingSetVar()
