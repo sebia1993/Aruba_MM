@@ -665,6 +665,35 @@ def test_delete_macs_sends_one_command_per_normalized_mac():
     assert connection.commands.count("aaa user delete mac aa:bb:cc:00:00:01") == 1
 
 
+def test_delete_macs_skips_unstrippable_mac_items():
+    class BadMac(str):
+        def strip(self, *_args, **_kwargs):
+            raise RuntimeError("bad strip")
+
+    connection = FakeConnection(
+        responses={
+            "no paging": "",
+            "aaa user delete mac aa:bb:cc:00:00:01": "User deleted",
+        }
+    )
+    runner = MmCleanupRunner(
+        connection_factory=lambda _config, _timeout: connection,
+        sleep_func=lambda _seconds: None,
+    )
+
+    results = runner._delete_macs(
+        MmConnectionConfig(host="192.0.2.10", username="admin", password="secret"),
+        CleanupSettings(role="profiling", timeout=5, delete_delay_seconds=0),
+        [BadMac("aa:bb:cc:00:00:02"), "aa:bb:cc:00:00:01"],  # type: ignore[list-item]
+        None,
+    )
+
+    assert len(results) == 1
+    assert results[0].mac == "aa:bb:cc:00:00:01"
+    assert results[0].success is True
+    assert connection.commands == ["no paging", "aaa user delete mac aa:bb:cc:00:00:01"]
+
+
 def test_delete_macs_records_invalid_mac_without_sending_command():
     connection = FakeConnection(responses={"no paging": ""})
     events = []
