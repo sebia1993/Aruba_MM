@@ -1,8 +1,12 @@
 import json
 from pathlib import Path
+import sys
+from types import SimpleNamespace
 
 from aruba_mm_cleanup.cleanup import MmCleanupRunner, build_delete_command, build_query_command, classify_delete_response
+from aruba_mm_cleanup.connection import connect_to_mm
 from aruba_mm_cleanup.models import CleanupSettings, MmConnectionConfig
+from aruba_mm_cleanup.session import MmSession
 
 
 class FakeConnection:
@@ -25,9 +29,65 @@ class FakeConnection:
         self.disconnected = True
 
 
+class FailingDisconnectConnection(FakeConnection):
+    def disconnect(self):
+        self.disconnected = True
+        raise RuntimeError("disconnect failed")
+
+
 def test_build_commands_use_role_and_mac():
     assert build_query_command("profiling") == "show global-user-table list role profiling"
     assert build_delete_command("aa:bb:cc:00:00:01") == "aaa user delete mac aa:bb:cc:00:00:01"
+
+
+def test_connect_to_mm_closes_connection_when_enable_fails(monkeypatch):
+    class EnableFailingConnection(FakeConnection):
+        def enable(self):
+            raise RuntimeError("enable failed")
+
+    connection = EnableFailingConnection()
+    captured_params = {}
+
+    def fake_connect_handler(**params):
+        captured_params.update(params)
+        return connection
+
+    monkeypatch.setitem(sys.modules, "netmiko", SimpleNamespace(ConnectHandler=fake_connect_handler))
+
+    config = MmConnectionConfig(
+        host="192.0.2.10",
+        username="admin",
+        password="secret",
+        enable_password="enable-secret",
+    )
+
+    try:
+        connect_to_mm(config, timeout=7)
+    except RuntimeError as exc:
+        assert str(exc) == "enable failed"
+    else:
+        raise AssertionError("connect_to_mm should re-raise enable failure")
+
+    assert connection.disconnected is True
+    assert captured_params["host"] == "192.0.2.10"
+    assert captured_params["secret"] == "enable-secret"
+
+
+def test_session_disconnect_failure_is_reported_and_session_is_cleared():
+    connection = FailingDisconnectConnection()
+    events = []
+    session = MmSession(connection_factory=lambda _config, _timeout: connection)
+    config = MmConnectionConfig(host="192.0.2.10", username="admin", password="secret")
+    settings = CleanupSettings(role="profiling", timeout=5, delete_delay_seconds=0)
+
+    assert session.run_command(config, settings, "show version") == ""
+
+    session.disconnect(progress_callback=lambda event, payload: events.append((event, payload)), reason="manual")
+
+    assert connection.disconnected is True
+    assert session.is_connected is False
+    assert ("warning", {"message": "disconnect failed: disconnect failed", "reason": "manual"}) in events
+    assert ("session_disconnected", {"reason": "manual"}) in events
 
 
 def test_run_once_deletes_snapshot_and_verifies_remaining(tmp_path):

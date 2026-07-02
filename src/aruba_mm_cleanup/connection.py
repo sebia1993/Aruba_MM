@@ -33,8 +33,15 @@ def connect_to_mm(config: MmConnectionConfig, *, timeout: int):
         "fast_cli": False,
     }
     connection = ConnectHandler(**params)
-    if config.enable_password:
-        connection.enable()
+    try:
+        if config.enable_password:
+            connection.enable()
+    except Exception:
+        try:
+            connection.disconnect()
+        except Exception:
+            pass
+        raise
     return connection
 
 
@@ -46,4 +53,3 @@ def run_command(connection: CommandConnection, command: str, *, timeout: int) ->
         cmd_verify=False,
         read_timeout=timeout,
     )
-
