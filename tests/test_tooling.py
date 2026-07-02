@@ -4,6 +4,7 @@ import zipfile
 import configparser
 import re
 from pathlib import Path
+from types import SimpleNamespace
 
 from aruba_mm_cleanup.cli import main as cli_main
 
@@ -140,6 +141,40 @@ def test_cli_treats_missing_password_input_as_cancel(monkeypatch, capsys):
 
     assert result == 1
     assert "Canceled before password input." in capsys.readouterr().out
+
+
+def test_cli_reports_history_save_warning(monkeypatch, capsys, tmp_path):
+    class FakeRunner:
+        def run_once(self, *_args, **_kwargs):
+            return SimpleNamespace(
+                queried_count=0,
+                delete_success_count=0,
+                delete_failure_count=0,
+                remaining_count=0,
+                reappeared_count=0,
+                audit_path=tmp_path / "cleanup_summary.json",
+                audit_error="",
+                history_error="history write failed",
+                error="",
+            )
+
+    monkeypatch.setattr("aruba_mm_cleanup.cli.MmCleanupRunner", lambda: FakeRunner())
+
+    result = cli_main(
+        [
+            "--host",
+            "192.0.2.10",
+            "--username",
+            "admin",
+            "--password",
+            "secret",
+            "--yes",
+        ]
+    )
+
+    output = capsys.readouterr().out
+    assert result == 0
+    assert "History warning: history write failed" in output
 
 
 def test_windows_build_and_docs_reference_current_exe_names():

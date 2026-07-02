@@ -71,6 +71,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     print(f"Audit: {summary.audit_path}")
     if summary.audit_error:
         print(f"Audit warning: {summary.audit_error}")
+    if summary.history_error:
+        print(f"History warning: {summary.history_error}")
     return 1 if summary.error or summary.delete_failure_count or summary.reappeared_count else 0
 
 
