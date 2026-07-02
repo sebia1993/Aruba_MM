@@ -510,6 +510,23 @@ def test_on_close_sets_flags_and_schedules_bounded_destroy_without_direct_close(
     assert scheduled[0][0] == SHUTDOWN_GRACE_MS
 
 
+def test_on_close_destroys_window_when_shutdown_after_fails():
+    app = make_headless_gui()
+    app._drain_after_id = None
+    app.copy_notice_after_id = None
+    close_calls = []
+    destroy_calls = []
+    app.after = lambda _ms, _callback: (_ for _ in ()).throw(tk.TclError("invalid command name"))
+    app._start_session_close = lambda **kwargs: close_calls.append(kwargs)
+    app._destroy_window = lambda: destroy_calls.append("destroyed")
+
+    ArubaMmCleanupGui.on_close(app)
+
+    assert app.closing is True
+    assert close_calls == [{"reason": "app_close", "enqueue_progress": False}]
+    assert destroy_calls == ["destroyed"]
+
+
 def test_start_session_close_returns_without_waiting_for_runner_lock():
     app = make_headless_gui()
     app.runner_lock = threading.Lock()

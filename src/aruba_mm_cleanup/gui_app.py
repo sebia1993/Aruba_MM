@@ -617,7 +617,10 @@ class ArubaMmCleanupGui(tk.Tk):
                 pass
             self.copy_notice_after_id = None
         self._start_session_close(reason="app_close", enqueue_progress=False)
-        self.after(SHUTDOWN_GRACE_MS, self._destroy_window)
+        try:
+            self.after(SHUTDOWN_GRACE_MS, self._destroy_window)
+        except tk.TclError:
+            self._destroy_window()
 
     def _scheduler_loop(
         self,
