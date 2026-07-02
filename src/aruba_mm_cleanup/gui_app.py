@@ -1033,7 +1033,7 @@ class ArubaMmCleanupGui(tk.Tk):
                             continue
                         if isinstance(record, dict) and record.get("mac"):
                             records.append(record)
-            except OSError:
+            except (OSError, UnicodeError):
                 return records
             return records
         records = []
