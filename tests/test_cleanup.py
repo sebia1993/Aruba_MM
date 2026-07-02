@@ -864,6 +864,24 @@ def test_summary_writes_tolerate_malformed_started_at(tmp_path):
     assert history[-1]["run_at"] == "bad-started-at"
 
 
+def test_audit_summary_tolerates_invalid_list_containers(tmp_path):
+    summary = CleanupRunSummary(started_at=datetime(2026, 7, 2, 13, 0, 0), role="profiling")
+    summary.target_macs = "aa:bb:cc:00:00:01"  # type: ignore[assignment]
+    summary.reappeared_macs = object()  # type: ignore[assignment]
+    summary.query_parse_decisions = None  # type: ignore[assignment]
+    summary.verify_parse_decisions = "not-a-decision-list"  # type: ignore[assignment]
+    summary.delete_results = object()  # type: ignore[assignment]
+
+    path = write_audit_summary(summary, output_dir=tmp_path, host="192.0.2.10")
+
+    audit = json.loads(path.read_text(encoding="utf-8"))
+    assert audit["target_macs"] == []
+    assert audit["reappeared_macs"] == []
+    assert audit["query_parse_decisions"] == []
+    assert audit["verify_parse_decisions"] == []
+    assert audit["delete_results"] == []
+
+
 def test_audit_summary_write_failure_does_not_leave_partial_final_file(tmp_path, monkeypatch):
     summary = CleanupRunSummary(started_at=datetime(2026, 7, 2, 13, 0, 0), role="profiling")
     original_write_text = Path.write_text

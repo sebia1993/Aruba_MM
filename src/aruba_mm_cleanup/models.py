@@ -111,11 +111,15 @@ class CleanupRunSummary:
             "reappeared_count": _safe_int(self.reappeared_count),
             "canceled": _safe_bool(self.canceled),
             "verification_skipped": _safe_bool(self.verification_skipped),
-            "target_macs": [_safe_text(item) for item in self.target_macs],
-            "reappeared_macs": [_safe_text(item) for item in self.reappeared_macs],
-            "query_parse_decisions": [_parse_decision_audit_dict(item) for item in self.query_parse_decisions],
-            "verify_parse_decisions": [_parse_decision_audit_dict(item) for item in self.verify_parse_decisions],
-            "delete_results": [_delete_result_audit_dict(item) for item in self.delete_results],
+            "target_macs": [_safe_text(item) for item in _safe_list_items(self.target_macs)],
+            "reappeared_macs": [_safe_text(item) for item in _safe_list_items(self.reappeared_macs)],
+            "query_parse_decisions": [
+                _parse_decision_audit_dict(item) for item in _safe_list_items(self.query_parse_decisions)
+            ],
+            "verify_parse_decisions": [
+                _parse_decision_audit_dict(item) for item in _safe_list_items(self.verify_parse_decisions)
+            ],
+            "delete_results": [_delete_result_audit_dict(item) for item in _safe_list_items(self.delete_results)],
             "audit_error": _safe_text(self.audit_error),
             "history_error": _safe_text(self.history_error),
             "error": _safe_text(self.error),
@@ -152,6 +156,12 @@ def _item_value(item: Any, name: str, default: Any) -> Any:
     if isinstance(item, Mapping):
         return item.get(name, default)
     return getattr(item, name, default)
+
+
+def _safe_list_items(value: Any) -> list[Any]:
+    if isinstance(value, (list, tuple, set)):
+        return list(value)
+    return []
 
 
 def _safe_text(value: Any) -> str:
