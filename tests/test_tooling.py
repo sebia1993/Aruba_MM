@@ -76,6 +76,32 @@ def test_cli_rejects_out_of_range_port_before_connecting():
     assert "--port must be between 1 and 65535" in output
 
 
+def test_cli_rejects_empty_host_before_connecting(monkeypatch, capsys):
+    def fail_runner():
+        raise AssertionError("runner should not be created for empty host")
+
+    monkeypatch.setattr("aruba_mm_cleanup.cli.MmCleanupRunner", fail_runner)
+
+    try:
+        cli_main(
+            [
+                "--host",
+                " ",
+                "--username",
+                "admin",
+                "--password",
+                "secret",
+                "--yes",
+            ]
+        )
+    except SystemExit as exc:
+        assert exc.code == 2
+    else:
+        raise AssertionError("CLI should reject empty host")
+
+    assert "--host must not be empty" in capsys.readouterr().err
+
+
 def test_cli_rejects_role_control_characters_before_connecting():
     completed = subprocess.run(
         [
