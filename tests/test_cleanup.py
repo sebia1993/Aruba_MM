@@ -75,6 +75,19 @@ def test_build_delete_command_rejects_missing_mac_without_attribute_error():
         raise AssertionError("build_delete_command should reject missing MAC values")
 
 
+def test_build_delete_command_rejects_unstrippable_mac_without_runtime_error():
+    class BadMac(str):
+        def strip(self, *_args, **_kwargs):
+            raise RuntimeError("bad strip")
+
+    try:
+        build_delete_command(BadMac("aa:bb:cc:00:00:01"))  # type: ignore[arg-type]
+    except ValueError as exc:
+        assert "MAC" in str(exc)
+    else:
+        raise AssertionError("build_delete_command should reject unstrippable MAC values")
+
+
 def test_build_query_command_rejects_control_characters_in_role():
     try:
         build_query_command("profiling\nshow version")

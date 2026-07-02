@@ -18,11 +18,14 @@ def normalize_mac(value: str) -> str:
     """Return aa:bb:cc:dd:ee:ff form, or an empty string when invalid."""
     if not isinstance(value, str):
         return ""
-    text = value.strip().strip(",;()[]{}<>")
-    hex_chars = re.sub(r"[^0-9A-Fa-f]", "", text)
-    if len(hex_chars) != 12 or not re.fullmatch(r"(?i)[0-9a-f]{12}", hex_chars):
+    try:
+        text = value.strip().strip(",;()[]{}<>")
+        hex_chars = re.sub(r"[^0-9A-Fa-f]", "", text)
+        if len(hex_chars) != 12 or not re.fullmatch(r"(?i)[0-9a-f]{12}", hex_chars):
+            return ""
+        return ":".join(hex_chars[index : index + 2] for index in range(0, 12, 2)).lower()
+    except Exception:
         return ""
-    return ":".join(hex_chars[index : index + 2] for index in range(0, 12, 2)).lower()
 
 
 def parse_global_user_table(output: str, *, role_filter: str = "profiling") -> list[UserEntry]:
