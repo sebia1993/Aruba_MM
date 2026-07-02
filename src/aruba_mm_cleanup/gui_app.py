@@ -990,7 +990,9 @@ class ArubaMmCleanupGui(tk.Tk):
                 self.cancel_button.configure(state="disabled")
             except tk.TclError:
                 pass
-            self._log(f"ERROR: {payload.get('error')}")
+            raw_error = payload.get("error")
+            error = "None" if raw_error is None else (_safe_text(raw_error) or raw_error.__class__.__name__)
+            self._log(f"ERROR: {error}")
 
     def _handle_summary(self, summary) -> None:
         def summary_value(name: str, default: object) -> object:

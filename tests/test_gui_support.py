@@ -656,6 +656,17 @@ def test_reconnect_progress_handles_unprintable_payload_without_losing_log():
     assert "RECONNECT: BadErrorText | BadErrorText" in app.logs
 
 
+def test_run_error_progress_handles_unprintable_error_without_losing_log():
+    app = make_headless_gui()
+
+    ArubaMmCleanupGui._handle_progress(app, "run_error", {"error": BadErrorText()})
+
+    assert app.status_var.get() == "실패"
+    assert app.timers[-1] == ("-", "대기")
+    assert app.cancel_button.config["state"] == "disabled"
+    assert "ERROR: BadErrorText" in app.logs
+
+
 def test_delete_canceled_button_failure_does_not_skip_log():
     app = make_headless_gui()
     app.cancel_button = FailingConfigureButton()
