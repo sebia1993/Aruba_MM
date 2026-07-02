@@ -1,6 +1,6 @@
-# Aruba MM Cleanup
+# Aruba_MM
 
-Aruba Mobility Master/MM에서 `profiling` Role 사용자 MAC을 조회하고, 60초 확인 대기 후 자동으로 `aaa user delete mac <mac>`을 실행하는 Windows 11 운영 대시보드입니다.
+Aruba MM Cleanup은 Aruba Mobility Master/MM에서 `profiling` Role 사용자 MAC을 조회하고, 60초 확인 대기 후 자동으로 `aaa user delete mac <mac>`을 실행하는 Windows 11 운영 대시보드입니다.
 
 ## Windows 11 사용 방법
 
