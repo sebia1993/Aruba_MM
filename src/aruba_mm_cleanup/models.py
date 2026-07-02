@@ -196,16 +196,19 @@ def _safe_timestamp_text(value: Any) -> str:
 def _safe_int(value: Any) -> int:
     try:
         return int(value)
-    except (TypeError, ValueError):
+    except Exception:
         return 0
 
 
 def _safe_bool(value: Any) -> bool:
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, str):
-        return value.strip().casefold() in {"1", "true", "yes", "y"}
-    return bool(value)
+    try:
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            return value.strip().casefold() in {"1", "true", "yes", "y"}
+        return bool(value)
+    except Exception:
+        return False
 
 
 def _safe_optional_bool(value: Any) -> Optional[bool]:

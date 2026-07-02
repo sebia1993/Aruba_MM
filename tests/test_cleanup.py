@@ -903,6 +903,36 @@ def test_audit_summary_tolerates_failing_item_value_access(tmp_path):
     assert audit["delete_results"][0]["status"] == "failed"
 
 
+def test_audit_summary_tolerates_failing_scalar_conversions(tmp_path):
+    class BadInt:
+        def __int__(self):
+            raise RuntimeError("bad int")
+
+    class BadBool:
+        def __bool__(self):
+            raise RuntimeError("bad bool")
+
+    summary = CleanupRunSummary(started_at=datetime(2026, 7, 2, 13, 0, 0), role="profiling")
+    summary.queried_count = BadInt()  # type: ignore[assignment]
+    summary.delete_success_count = BadInt()  # type: ignore[assignment]
+    summary.canceled = BadBool()  # type: ignore[assignment]
+    summary.verification_skipped = BadBool()  # type: ignore[assignment]
+    summary.query_parse_decisions = [{"line_number": BadInt(), "type_na": BadBool()}]  # type: ignore[list-item]
+    summary.delete_results = [{"mac": "aa:bb:cc:00:00:01", "success": BadBool()}]  # type: ignore[list-item]
+
+    path = write_audit_summary(summary, output_dir=tmp_path, host="192.0.2.10")
+
+    audit = json.loads(path.read_text(encoding="utf-8"))
+    assert audit["queried_count"] == 0
+    assert audit["delete_success_count"] == 0
+    assert audit["canceled"] is False
+    assert audit["verification_skipped"] is False
+    assert audit["query_parse_decisions"][0]["line_number"] == 0
+    assert audit["query_parse_decisions"][0]["type_na"] is False
+    assert audit["delete_results"][0]["success"] is False
+    assert audit["delete_results"][0]["status"] == "failed"
+
+
 def test_summary_writes_tolerate_malformed_started_at(tmp_path):
     class BadStartedAt:
         def isoformat(self, *_args, **_kwargs):
