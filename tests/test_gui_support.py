@@ -55,6 +55,11 @@ class FakeButton:
         self.config.update(kwargs)
 
 
+class FailingConfigureButton(FakeButton):
+    def configure(self, **_kwargs):
+        raise tk.TclError("invalid command name")
+
+
 class FakeHistoryTable:
     def __init__(self):
         self.rows = {}
@@ -386,6 +391,16 @@ def test_disconnect_status_update_failure_does_not_skip_log():
     assert "SESSION DISCONNECT REQUEST" in app.logs
 
 
+def test_delete_canceled_button_failure_does_not_skip_log():
+    app = make_headless_gui()
+    app.cancel_button = FailingConfigureButton()
+    app.table = FakeTreeTable()
+
+    ArubaMmCleanupGui._handle_progress(app, "delete_canceled", {"count": 2})
+
+    assert "CANCELED: 2 pending MAC(s)" in app.logs
+
+
 def test_query_done_adds_unique_display_macs_to_cumulative_total():
     app = make_headless_gui()
     replaced = []
@@ -542,6 +557,19 @@ def test_running_state_resets_current_run_counters():
     assert app.cancel_button.config["state"] == "disabled"
 
 
+def test_running_state_button_failure_still_updates_timer():
+    app = make_headless_gui()
+    app.manual_button = FailingConfigureButton()
+    app.schedule_button = FailingConfigureButton()
+    app.cancel_button = FailingConfigureButton()
+
+    ArubaMmCleanupGui._set_running(app, True)
+
+    assert app.is_running is True
+    assert app.timers[-1] == ("실행 중", "조회/삭제 처리")
+    assert app.current_run_query_counted is False
+
+
 def test_set_timer_ignores_destroyed_timer_variables():
     app = make_headless_gui()
     app.timer_value_var = FailingSetVar()
@@ -591,6 +619,20 @@ def test_drain_events_logs_bad_event_and_continues():
     assert app.stop_schedule_button.config["state"] == "disabled"
     assert app.timers[-1] == ("-", "대기")
     assert app.scheduled_callbacks[-1][0] == 150
+
+
+def test_scheduler_stopped_button_failure_still_updates_timer():
+    app = make_headless_gui()
+    app.scheduler_running = True
+    app.manual_button = FailingConfigureButton()
+    app.schedule_button = FailingConfigureButton()
+    app.stop_schedule_button = FailingConfigureButton()
+    app.event_queue.put(("scheduler_stopped", None))
+
+    ArubaMmCleanupGui._drain_events(app)
+
+    assert app.scheduler_running is False
+    assert app.timers[-1] == ("-", "대기")
 
 
 def test_drain_events_handles_missing_progress_payload_as_empty_dict():
@@ -1147,6 +1189,29 @@ def test_summary_updates_simple_dashboard_cards_with_final_values():
 def test_summary_status_update_failure_does_not_skip_audit_or_history():
     app = make_headless_gui()
     app.status_var = FailingSetVar()
+    summary = SimpleNamespace(
+        queried_count=1,
+        target_macs=["aa:bb:cc:00:00:01"],
+        delete_success_count=1,
+        reappeared_count=0,
+        verification_skipped=False,
+        error="",
+        canceled=False,
+        reappeared_macs=[],
+        audit_path="/tmp/audit.json",
+        audit_error="",
+        history_error="",
+    )
+
+    ArubaMmCleanupGui._handle_summary(app, summary)
+
+    assert "AUDIT: /tmp/audit.json" in app.logs
+    assert app.history_summaries == [summary]
+
+
+def test_summary_button_failure_does_not_skip_audit_or_history():
+    app = make_headless_gui()
+    app.cancel_button = FailingConfigureButton()
     summary = SimpleNamespace(
         queried_count=1,
         target_macs=["aa:bb:cc:00:00:01"],

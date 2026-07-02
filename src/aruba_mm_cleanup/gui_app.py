@@ -562,9 +562,18 @@ class ArubaMmCleanupGui(tk.Tk):
         self._load_history_from_output_dir(output_dir)
         self.scheduler_stop_event.clear()
         self.scheduler_running = True
-        self.manual_button.configure(state="disabled")
-        self.schedule_button.configure(state="disabled")
-        self.stop_schedule_button.configure(state="normal")
+        try:
+            self.manual_button.configure(state="disabled")
+        except tk.TclError:
+            pass
+        try:
+            self.schedule_button.configure(state="disabled")
+        except tk.TclError:
+            pass
+        try:
+            self.stop_schedule_button.configure(state="normal")
+        except tk.TclError:
+            pass
         self._sync_settings_visibility()
         self._log(f"주기 실행 시작: {interval}초 간격")
         self.scheduler_worker = threading.Thread(
@@ -578,9 +587,18 @@ class ArubaMmCleanupGui(tk.Tk):
         self.scheduler_stop_event.set()
         self.cancel_event.set()
         self.scheduler_running = False
-        self.manual_button.configure(state="disabled" if self.is_running else "normal")
-        self.schedule_button.configure(state="disabled" if self.is_running else "normal")
-        self.stop_schedule_button.configure(state="disabled")
+        try:
+            self.manual_button.configure(state="disabled" if self.is_running else "normal")
+        except tk.TclError:
+            pass
+        try:
+            self.schedule_button.configure(state="disabled" if self.is_running else "normal")
+        except tk.TclError:
+            pass
+        try:
+            self.stop_schedule_button.configure(state="disabled")
+        except tk.TclError:
+            pass
         self._set_timer("-", "대기")
         self._sync_settings_visibility()
         self._log("주기 실행 정지 요청")
@@ -763,9 +781,18 @@ class ArubaMmCleanupGui(tk.Tk):
                         self._set_timer(f"{payload}s", "다음 실행")
                     elif event == "scheduler_stopped":
                         self.scheduler_running = False
-                        self.manual_button.configure(state="disabled" if self.is_running else "normal")
-                        self.schedule_button.configure(state="disabled" if self.is_running else "normal")
-                        self.stop_schedule_button.configure(state="disabled")
+                        try:
+                            self.manual_button.configure(state="disabled" if self.is_running else "normal")
+                        except tk.TclError:
+                            pass
+                        try:
+                            self.schedule_button.configure(state="disabled" if self.is_running else "normal")
+                        except tk.TclError:
+                            pass
+                        try:
+                            self.stop_schedule_button.configure(state="disabled")
+                        except tk.TclError:
+                            pass
                         self._set_timer("-", "대기")
                         self._sync_settings_visibility()
                 except Exception as exc:
@@ -836,7 +863,10 @@ class ArubaMmCleanupGui(tk.Tk):
                 self.status_var.set(f"{remaining}초 후 삭제 시작" if remaining > 0 else "삭제 시작")
             except tk.TclError:
                 pass
-            self.cancel_button.configure(state="normal" if remaining > 0 else "disabled")
+            try:
+                self.cancel_button.configure(state="normal" if remaining > 0 else "disabled")
+            except tk.TclError:
+                pass
         elif event == "delete_start":
             try:
                 self.status_var.set("MAC 삭제 중")
@@ -870,7 +900,10 @@ class ArubaMmCleanupGui(tk.Tk):
             except tk.TclError:
                 pass
             self._set_timer("-", "대기")
-            self.cancel_button.configure(state="disabled")
+            try:
+                self.cancel_button.configure(state="disabled")
+            except tk.TclError:
+                pass
             self._set_all_pending_status("취소됨")
             self._log(f"CANCELED: {payload.get('count')} pending MAC(s)")
         elif event == "run_error":
@@ -879,7 +912,10 @@ class ArubaMmCleanupGui(tk.Tk):
             except tk.TclError:
                 pass
             self._set_timer("-", "대기")
-            self.cancel_button.configure(state="disabled")
+            try:
+                self.cancel_button.configure(state="disabled")
+            except tk.TclError:
+                pass
             self._log(f"ERROR: {payload.get('error')}")
 
     def _handle_summary(self, summary) -> None:
@@ -912,7 +948,10 @@ class ArubaMmCleanupGui(tk.Tk):
             self.current_run_delete_counted = True
             self._sync_counter_vars()
         self._set_timer("-", "대기")
-        self.cancel_button.configure(state="disabled")
+        try:
+            self.cancel_button.configure(state="disabled")
+        except tk.TclError:
+            pass
         try:
             if error:
                 self.status_var.set("실패")
@@ -1012,12 +1051,21 @@ class ArubaMmCleanupGui(tk.Tk):
 
     def _set_running(self, running: bool) -> None:
         self.is_running = running
-        self.manual_button.configure(state="disabled" if running or self.scheduler_running else "normal")
-        self.schedule_button.configure(state="disabled" if running or self.scheduler_running else "normal")
+        try:
+            self.manual_button.configure(state="disabled" if running or self.scheduler_running else "normal")
+        except tk.TclError:
+            pass
+        try:
+            self.schedule_button.configure(state="disabled" if running or self.scheduler_running else "normal")
+        except tk.TclError:
+            pass
         if running:
             self._reset_run_counters()
             self._set_timer("실행 중", "조회/삭제 처리")
-            self.cancel_button.configure(state="disabled")
+            try:
+                self.cancel_button.configure(state="disabled")
+            except tk.TclError:
+                pass
         elif not self.scheduler_running:
             self._set_timer("-", "대기")
         self._sync_settings_visibility()
