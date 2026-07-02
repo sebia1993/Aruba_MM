@@ -1049,7 +1049,10 @@ class ArubaMmCleanupGui(tk.Tk):
             if not isinstance(audit, dict):
                 continue
             run_at = str(audit.get("started_at", ""))
-            reappeared = set(audit.get("reappeared_macs") or [])
+            reappeared_macs = audit.get("reappeared_macs") or []
+            if not isinstance(reappeared_macs, (list, tuple, set)):
+                reappeared_macs = []
+            reappeared = set(reappeared_macs)
             for item in audit.get("delete_results") or []:
                 if not isinstance(item, dict) or not item.get("mac"):
                     continue
