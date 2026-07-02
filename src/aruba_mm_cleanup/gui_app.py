@@ -844,32 +844,41 @@ class ArubaMmCleanupGui(tk.Tk):
 
     def _handle_summary(self, summary) -> None:
         self._ensure_cumulative_counters()
+        error = getattr(summary, "error", "")
+        canceled = bool(getattr(summary, "canceled", False))
+        verification_skipped = bool(getattr(summary, "verification_skipped", False))
+        delete_success_count = getattr(summary, "delete_success_count", 0)
+        reappeared_count = getattr(summary, "reappeared_count", 0)
+        reappeared_macs = getattr(summary, "reappeared_macs", []) or []
+        audit_path = getattr(summary, "audit_path", None)
+        audit_error = getattr(summary, "audit_error", "")
+        history_error = getattr(summary, "history_error", "")
         target_count = len(getattr(summary, "target_macs", []) or []) or getattr(summary, "queried_count", 0)
         if not self.current_run_query_counted:
             self._count_current_query(target_count)
         if not self.current_run_delete_counted:
-            if not (summary.error or summary.canceled or getattr(summary, "verification_skipped", False)):
-                self.cumulative_deleted_count += int(summary.delete_success_count)
+            if not (error or canceled or verification_skipped):
+                self.cumulative_deleted_count += int(delete_success_count)
             self.current_run_delete_counted = True
             self._sync_counter_vars()
         self._set_timer("-", "대기")
         self.cancel_button.configure(state="disabled")
-        if summary.error:
+        if error:
             self.status_var.set("실패")
-        elif summary.canceled:
+        elif canceled:
             self.status_var.set("취소됨")
-        elif summary.reappeared_count:
+        elif reappeared_count:
             self.status_var.set("삭제 MAC 재조회됨")
         else:
             self.status_var.set("완료")
-        if summary.reappeared_macs:
-            self._mark_reappeared_rows(summary.reappeared_macs)
-        if summary.audit_path:
-            self._log(f"AUDIT: {summary.audit_path}")
-        if summary.audit_error:
-            self._log(f"AUDIT WARNING: {summary.audit_error}")
-        if summary.history_error:
-            self._log(f"HISTORY WARNING: {summary.history_error}")
+        if reappeared_macs:
+            self._mark_reappeared_rows(reappeared_macs)
+        if audit_path:
+            self._log(f"AUDIT: {audit_path}")
+        if audit_error:
+            self._log(f"AUDIT WARNING: {audit_error}")
+        if history_error:
+            self._log(f"HISTORY WARNING: {history_error}")
         self._append_history_rows(summary)
 
     def _replace_table(self, macs: list[str], status: str, *, type_na_macs: Optional[list[str]] = None) -> None:

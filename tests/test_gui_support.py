@@ -807,6 +807,19 @@ def test_summary_handles_missing_queried_count_as_zero():
     assert app.status_var.get() == "완료"
 
 
+def test_summary_handles_missing_status_and_count_fields_as_defaults():
+    app = make_headless_gui()
+    summary = SimpleNamespace(target_macs=[])
+
+    app._handle_summary(summary)
+
+    assert app.counter_vars["queried"].get() == "7"
+    assert app.counter_vars["deleted"].get() == "3"
+    assert app.status_var.get() == "완료"
+    assert app.reappeared_rows == []
+    assert app.logs == []
+
+
 @pytest.mark.parametrize(
     ("error", "canceled", "verification_skipped"),
     [("boom", False, False), ("", True, False), ("", False, True)],
