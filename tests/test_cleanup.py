@@ -639,6 +639,13 @@ def test_classify_delete_response_handles_failure_unknown_and_success():
     assert "판정 불가" in error
 
 
+def test_classify_delete_response_handles_non_string_output():
+    status, error = classify_delete_response({"unexpected": "response"})  # type: ignore[arg-type]
+
+    assert status == "unknown"
+    assert "삭제 명령 응답 판정 불가" in error
+
+
 def test_audit_save_failure_does_not_break_summary(tmp_path):
     blocked_output_dir = tmp_path / "not-a-directory"
     blocked_output_dir.write_text("file blocks directory creation", encoding="utf-8")

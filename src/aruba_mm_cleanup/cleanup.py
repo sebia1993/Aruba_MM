@@ -365,6 +365,8 @@ def append_history_records(summary: CleanupRunSummary, *, output_dir: Path, host
 
 
 def classify_delete_response(output: str) -> tuple[str, str]:
+    if output is not None and not isinstance(output, str):
+        return "unknown", f"확인 필요: 삭제 명령 응답 판정 불가 - {output}"
     text = (output or "").strip()
     normalized = text.casefold()
     if not text:
