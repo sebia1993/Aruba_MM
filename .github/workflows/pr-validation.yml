@@ -1,0 +1,34 @@
+name: PR Validation
+
+on:
+  pull_request:
+  push:
+    branches-ignore: [main]
+
+jobs:
+  windows-verify:
+    name: Windows package verification
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Run validation
+        shell: pwsh
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\validate.ps1
+
+      - name: Build Windows release package
+        shell: pwsh
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File .\build_windows_gui_exe.ps1
+
+      - name: Verify Windows release package
+        shell: pwsh
+        run: python .\tools\verify_release_package.py --dist .\dist --smoke-cli
+

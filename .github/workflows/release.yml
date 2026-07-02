@@ -1,0 +1,231 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-main
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build and publish release
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Create release metadata
+        id: metadata
+        shell: pwsh
+        run: |
+          $kst = [System.TimeZoneInfo]::FindSystemTimeZoneById("Korea Standard Time")
+          $kstNow = [System.TimeZoneInfo]::ConvertTime([System.DateTimeOffset]::UtcNow, $kst)
+          $baseTag = "v{0}" -f $kstNow.ToString("yyyy.MM.dd-HHmmss")
+          $candidate = $baseTag
+          $counter = 1
+
+          while ($true) {
+            $existingTag = git ls-remote --tags origin "refs/tags/$candidate"
+            if ($LASTEXITCODE -ne 0) {
+              throw "Failed to check existing remote tags."
+            }
+            if (-not $existingTag) {
+              break
+            }
+            $candidate = "$baseTag-$counter"
+            $counter += 1
+          }
+
+          $assetName = "aruba-mm-cleanup_${candidate}_windows.zip"
+          "tag=$candidate" >> $env:GITHUB_OUTPUT
+          "asset_name=$assetName" >> $env:GITHUB_OUTPUT
+
+      - name: Run validation
+        shell: pwsh
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\validate.ps1
+
+      - name: Build Windows release package
+        shell: pwsh
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File .\build_windows_gui_exe.ps1
+
+      - name: Verify Windows release package
+        shell: pwsh
+        run: python .\tools\verify_release_package.py --dist .\dist --smoke-cli
+
+      - name: Prepare release assets
+        id: assets
+        shell: pwsh
+        run: |
+          $assetDir = Join-Path $PWD "release_assets"
+          New-Item -ItemType Directory -Force -Path $assetDir | Out-Null
+          $sourceZip = Get-ChildItem -Path ".\dist" -Filter "*.zip" |
+            Sort-Object LastWriteTime -Descending |
+            Select-Object -First 1
+          if (-not $sourceZip) {
+            throw "No release zip was generated in dist."
+          }
+
+          $assetName = "${{ steps.metadata.outputs.asset_name }}"
+          $assetPath = Join-Path $assetDir $assetName
+          Copy-Item -LiteralPath $sourceZip.FullName -Destination $assetPath -Force
+
+          $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $assetPath).Hash.ToLowerInvariant()
+          $checksumPath = "$assetPath.sha256"
+          "$hash  $assetName" | Set-Content -LiteralPath $checksumPath -Encoding ASCII
+
+          "asset_path=$assetPath" >> $env:GITHUB_OUTPUT
+          "checksum_path=$checksumPath" >> $env:GITHUB_OUTPUT
+          "checksum=$hash" >> $env:GITHUB_OUTPUT
+
+      - name: Verify release assets
+        shell: pwsh
+        run: |
+          python .\tools\verify_release_package.py `
+            --zip "${{ steps.assets.outputs.asset_path }}" `
+            --sha256 "${{ steps.assets.outputs.checksum_path }}" `
+            --smoke-cli
+
+      - name: Create Korean release notes
+        id: notes
+        shell: pwsh
+        run: |
+          $tag = "${{ steps.metadata.outputs.tag }}"
+          $assetName = "${{ steps.metadata.outputs.asset_name }}"
+          $checksum = "${{ steps.assets.outputs.checksum }}"
+          $sha = "${{ github.sha }}"
+          $branch = "${{ github.ref_name }}"
+          $before = "${{ github.event.before }}"
+
+          if ($before -and $before -notmatch "^0+$") {
+            $range = "$before..$sha"
+            $commitHashes = git log --format="%H" $range
+            $changedFiles = git diff --name-only $range
+          } else {
+            $commitHashes = git log --format="%H" -n 20 $sha
+            $changedFiles = git show --pretty="" --name-only $sha
+          }
+
+          $changeSummary = New-Object System.Collections.Generic.List[string]
+          foreach ($commitHash in $commitHashes) {
+            if (-not $commitHash) { continue }
+            $shortHash = git rev-parse --short $commitHash
+            $subject = git log -1 --pretty=format:"%s" $commitHash
+            $body = git log -1 --pretty=format:"%b" $commitHash
+            $changeSummary.Add("- $subject ($shortHash)")
+            foreach ($line in ($body -split "`r?`n")) {
+              $trimmed = $line.Trim()
+              if ($trimmed) { $changeSummary.Add("  - $trimmed") }
+            }
+          }
+          if ($changeSummary.Count -eq 0) {
+            $changeSummary.Add("- 변경 요약을 자동으로 찾지 못했습니다.")
+          }
+          $changeSummaryText = $changeSummary -join [Environment]::NewLine
+
+          $changedFileLines = @($changedFiles | Where-Object { $_ } | ForEach-Object { "- $_" })
+          if (-not $changedFileLines) {
+            $changedFileLines = @("- 변경 파일을 자동으로 찾지 못했습니다.")
+          }
+          $changedFileText = $changedFileLines -join [Environment]::NewLine
+
+          $commitLines = git log --pretty=format:"- %h %s" -n 20 $sha
+          $commitText = $commitLines -join [Environment]::NewLine
+
+          $notesPath = Join-Path $PWD "release_notes.md"
+          $notes = @"
+          # aruba-mm-cleanup $tag
+
+          이 릴리즈는 main 브랜치에 반영된 변경 사항을 기준으로 GitHub Actions에서 자동 생성한 Windows 실행 패키지입니다.
+
+          ## 변경내용
+          $changeSummaryText
+
+          ## 검증
+          - 기준 커밋 SHA: $sha
+          - 브랜치명: $branch
+          - 실행한 검증 명령: powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\validate.ps1
+          - 실행한 빌드 명령: powershell -NoProfile -ExecutionPolicy Bypass -File .\build_windows_gui_exe.ps1
+          - 실행한 패키지 검증: python .\tools\verify_release_package.py --dist .\dist --smoke-cli
+
+          ## 첨부파일
+          - 산출물 파일명: $assetName
+          - SHA256 파일명: $assetName.sha256
+          - SHA256 체크섬: $checksum
+          - 사용 방법: ZIP 파일과 .sha256 파일을 함께 다운로드해서 무결성을 확인한 뒤, Windows 11 PC에서 ZIP 압축을 풀고 ArubaMMCleanupGUI.exe를 실행하세요.
+
+          <details>
+          <summary>세부 커밋 및 변경 파일</summary>
+
+          ### 원본 커밋 목록
+          $commitText
+
+          ### 변경 파일
+          $changedFileText
+
+          </details>
+          "@
+          $notes = $notes -replace "(?m)^          ", ""
+          $notes | Set-Content -LiteralPath $notesPath -Encoding UTF8
+          "notes_path=$notesPath" >> $env:GITHUB_OUTPUT
+
+      - name: Create Git tag
+        shell: pwsh
+        run: |
+          git tag "${{ steps.metadata.outputs.tag }}" "${{ github.sha }}"
+          git push origin "refs/tags/${{ steps.metadata.outputs.tag }}"
+
+      - name: Create draft release
+        id: create_release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ steps.metadata.outputs.tag }}" `
+            "${{ steps.assets.outputs.asset_path }}#${{ steps.metadata.outputs.asset_name }}" `
+            "${{ steps.assets.outputs.checksum_path }}#${{ steps.metadata.outputs.asset_name }}.sha256" `
+            --repo "${{ github.repository }}" `
+            --title "aruba-mm-cleanup ${{ steps.metadata.outputs.tag }}" `
+            --notes-file "${{ steps.notes.outputs.notes_path }}" `
+            --verify-tag `
+            --draft
+
+      - name: Publish release
+        id: publish_release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release edit "${{ steps.metadata.outputs.tag }}" `
+            --repo "${{ github.repository }}" `
+            --draft=false
+
+      - name: Remove incomplete draft release
+        if: failure() && steps.metadata.outputs.tag != '' && steps.publish_release.outcome != 'success'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "${{ steps.metadata.outputs.tag }}"
+          gh release delete "$tag" --repo "${{ github.repository }}" --yes --cleanup-tag
+          git push origin ":refs/tags/$tag"
+

@@ -1,0 +1,6 @@
+Global User Table
+-----------------
+IP              MAC Address          User          Role        VLAN  BSSID
+192.0.2.10      aa:bb:cc:00:00:01    sample-a      profiling   20    11:22:33:44:55:66
+192.0.2.11      aa:bb:cc:00:00:02    sample-b      profiling   20    22:33:44:55:66:77
+
