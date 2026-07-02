@@ -152,7 +152,10 @@ def test_github_actions_release_contract():
     assert "# Aruba MM Cleanup $tag" in release_workflow
     assert "## 변경 내용" in release_workflow
     assert 'git log --format="%H"' in release_workflow
-    assert '$changeSummary.Add("- $subject ($shortHash)")' in release_workflow
+    assert "Release-Note-KO:" in release_workflow
+    assert "Korean release note is required" in release_workflow
+    assert '$releaseNote -notmatch "[가-힣]"' in release_workflow
+    assert '$changeSummary.Add("- $releaseNote ($shortHash)")' in release_workflow
     assert "CHANGELOG.md" not in release_workflow
     assert "## 검증" in release_workflow
     assert "- 기준 커밋: $sha" in release_workflow

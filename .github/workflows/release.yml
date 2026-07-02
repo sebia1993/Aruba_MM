@@ -124,7 +124,22 @@ jobs:
             if (-not $commitHash) { continue }
             $shortHash = git rev-parse --short $commitHash
             $subject = git log -1 --pretty=format:"%s" $commitHash
-            $changeSummary.Add("- $subject ($shortHash)")
+            $body = git log -1 --pretty=format:"%b" $commitHash
+            $releaseNote = ""
+            foreach ($line in ($body -split "`r?`n")) {
+              $trimmed = $line.Trim()
+              if ($trimmed -match "^Release-Note-KO:\s*(.+)$") {
+                $releaseNote = $Matches[1].Trim()
+                break
+              }
+            }
+            if (-not $releaseNote) {
+              $releaseNote = $subject.Trim()
+            }
+            if ($releaseNote -notmatch "[가-힣]") {
+              throw "Korean release note is required for commit $shortHash. Use a Korean commit subject or add 'Release-Note-KO: ...' to the commit body."
+            }
+            $changeSummary.Add("- $releaseNote ($shortHash)")
           }
           if ($changeSummary.Count -eq 0) {
             $changeSummary.Add("- 변경 요약을 자동으로 찾지 못했습니다.")
