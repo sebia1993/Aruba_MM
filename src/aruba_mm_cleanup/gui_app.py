@@ -521,9 +521,16 @@ class ArubaMmCleanupGui(tk.Tk):
         )
 
     def browse_output_dir(self) -> None:
-        selected = filedialog.askdirectory(initialdir=self.output_dir_var.get() or str(DEFAULT_OUTPUT_DIR))
+        try:
+            initial_dir = self.output_dir_var.get() or str(DEFAULT_OUTPUT_DIR)
+            selected = filedialog.askdirectory(initialdir=initial_dir)
+        except tk.TclError:
+            return
         if selected:
-            self.output_dir_var.set(selected)
+            try:
+                self.output_dir_var.set(selected)
+            except tk.TclError:
+                return
             self._load_history_from_output_dir(Path(selected), force=True)
 
     def start_manual_run(self) -> None:

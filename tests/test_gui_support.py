@@ -42,6 +42,11 @@ class FakeVar:
         self.value = str(value)
 
 
+class FailingGetVar(FakeVar):
+    def get(self):
+        raise tk.TclError("invalid command name")
+
+
 class FailingSetVar(FakeVar):
     def set(self, _value):
         raise tk.TclError("invalid command name")
@@ -374,6 +379,74 @@ def test_read_interval_rejects_invalid_values(value):
 
     with pytest.raises(ValueError, match="주기\\(초\\)"):
         ArubaMmCleanupGui._read_interval(app)
+
+
+def test_browse_output_dir_updates_output_dir_and_loads_history(monkeypatch):
+    app = make_headless_gui()
+    app.output_dir_var = FakeVar("/tmp/current")
+    loaded = []
+    asked_initial_dirs = []
+    app._load_history_from_output_dir = lambda path, force=False: loaded.append((path, force))
+    monkeypatch.setattr(
+        gui_app_module.filedialog,
+        "askdirectory",
+        lambda **kwargs: asked_initial_dirs.append(kwargs["initialdir"]) or "/tmp/selected",
+    )
+
+    ArubaMmCleanupGui.browse_output_dir(app)
+
+    assert asked_initial_dirs == ["/tmp/current"]
+    assert app.output_dir_var.get() == "/tmp/selected"
+    assert loaded == [(Path("/tmp/selected"), True)]
+
+
+def test_browse_output_dir_ignores_dialog_tcl_error(monkeypatch):
+    app = make_headless_gui()
+    app.output_dir_var = FakeVar("/tmp/current")
+    loaded = []
+    app._load_history_from_output_dir = lambda path, force=False: loaded.append((path, force))
+    monkeypatch.setattr(
+        gui_app_module.filedialog,
+        "askdirectory",
+        lambda **_kwargs: (_ for _ in ()).throw(tk.TclError("invalid command name")),
+    )
+
+    ArubaMmCleanupGui.browse_output_dir(app)
+
+    assert app.output_dir_var.get() == "/tmp/current"
+    assert loaded == []
+
+
+def test_browse_output_dir_ignores_destroyed_output_dir_variable(monkeypatch):
+    app = make_headless_gui()
+    app.output_dir_var = FailingGetVar("/tmp/current")
+    loaded = []
+    app._load_history_from_output_dir = lambda path, force=False: loaded.append((path, force))
+    monkeypatch.setattr(
+        gui_app_module.filedialog,
+        "askdirectory",
+        lambda **_kwargs: "/tmp/selected",
+    )
+
+    ArubaMmCleanupGui.browse_output_dir(app)
+
+    assert loaded == []
+
+
+def test_browse_output_dir_ignores_destroyed_output_dir_set(monkeypatch):
+    app = make_headless_gui()
+    app.output_dir_var = FailingSetVar("/tmp/current")
+    loaded = []
+    app._load_history_from_output_dir = lambda path, force=False: loaded.append((path, force))
+    monkeypatch.setattr(
+        gui_app_module.filedialog,
+        "askdirectory",
+        lambda **_kwargs: "/tmp/selected",
+    )
+
+    ArubaMmCleanupGui.browse_output_dir(app)
+
+    assert loaded == []
 
 
 def test_manual_run_input_error_dialog_failure_does_not_start_worker(monkeypatch):
