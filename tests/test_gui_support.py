@@ -153,6 +153,14 @@ class DestroyedTreeTable(FakeTreeTable):
         raise tk.TclError("invalid command name")
 
 
+class IdentifyFailingTreeTable(FakeTreeTable):
+    def identify_column(self, _x):
+        raise tk.TclError("invalid command name")
+
+    def identify_row(self, _y):
+        raise tk.TclError("invalid command name")
+
+
 class DestroyedHistoryTable(FakeHistoryTable):
     def get_children(self):
         raise tk.TclError("invalid command name")
@@ -1685,6 +1693,18 @@ def test_mac_copy_notice_ignores_overlay_place_failure():
     assert app.copy_notice_title_var.get() == "복사 완료"
     assert app.copy_notice_mac_var.get() == "aa:bb:cc:00:00:01"
     assert app.scheduled_callbacks[0][0] == 1000
+
+
+def test_mac_copy_ignores_destroyed_table_identify_failure():
+    app = make_headless_gui()
+    table = IdentifyFailingTreeTable()
+
+    ArubaMmCleanupGui._copy_mac_from_table_event(app, FakeClickEvent(), table, "#1")
+
+    assert app.clipboard_values == []
+    assert app.copy_notice_title_var.get() == ""
+    assert app.copy_notice_mac_var.get() == ""
+    assert app.scheduled_callbacks == []
 
 
 def test_show_copy_notice_ignores_destroyed_notice_variables():

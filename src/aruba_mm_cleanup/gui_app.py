@@ -1351,9 +1351,13 @@ class ArubaMmCleanupGui(tk.Tk):
         self.history_row_counter += 1
 
     def _copy_mac_from_table_event(self, event: tk.Event, table: ttk.Treeview, mac_column: str) -> None:
-        if table.identify_column(event.x) != mac_column:
+        try:
+            clicked_column = table.identify_column(event.x)
+            row_id = table.identify_row(event.y)
+        except tk.TclError:
             return
-        row_id = table.identify_row(event.y)
+        if clicked_column != mac_column:
+            return
         if not row_id:
             return
         try:
