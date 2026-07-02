@@ -301,7 +301,10 @@ class MmCleanupRunner:
         progress_callback: Optional[ProgressCallback],
         should_cancel: CancelCheck,
     ) -> bool:
-        remaining = max(0, int(seconds))
+        try:
+            remaining = max(0, int(seconds))
+        except Exception:
+            return False
         while remaining > 0:
             if should_cancel():
                 return False

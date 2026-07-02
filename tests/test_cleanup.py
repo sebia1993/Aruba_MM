@@ -299,6 +299,42 @@ def test_run_once_zero_delete_delay_starts_delete_after_countdown_zero(tmp_path)
     assert "aaa user delete mac aa:bb:cc:00:00:01" in connection.commands
 
 
+def test_run_once_cancels_when_delete_delay_conversion_fails(tmp_path):
+    class BadDelay:
+        def __int__(self):
+            raise RuntimeError("bad delay")
+
+    first_query = "10.1.1.10 aa:bb:cc:00:00:01 user-a profiling"
+    connection = FakeConnection(
+        responses={
+            "no paging": "",
+            "show global-user-table list role profiling": [first_query],
+        }
+    )
+    events = []
+    runner = MmCleanupRunner(
+        connection_factory=lambda _config, _timeout: connection,
+        sleep_func=lambda _seconds: None,
+    )
+
+    summary_settings = CleanupSettings(role="profiling", timeout=5, delete_delay_seconds=0)
+    object.__setattr__(summary_settings, "delete_delay_seconds", BadDelay())
+
+    summary = runner.run_once(
+        MmConnectionConfig(host="192.0.2.10", username="admin", password="secret"),
+        summary_settings,
+        output_dir=tmp_path,
+        progress_callback=lambda event, payload: events.append((event, payload)),
+    )
+
+    assert summary.canceled is True
+    assert summary.error == ""
+    assert summary.remaining_count == 1
+    assert summary.delete_results == []
+    assert "aaa user delete mac aa:bb:cc:00:00:01" not in connection.commands
+    assert any(event == "delete_canceled" and payload["count"] == 1 for event, payload in events)
+
+
 def test_run_once_reports_type_na_macs_without_blocking_delete(tmp_path):
     header = f"{'IP':<16}{'MAC Address':<21}{'User':<14}{'Role':<12}{'Type':<8}{'BSSID'}"
     first_query = "\n".join(
