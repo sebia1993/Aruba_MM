@@ -24,6 +24,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     args = parser.parse_args(argv)
     if not args.host.strip():
         parser.error("--host must not be empty")
+    if not args.username.strip():
+        parser.error("--username must not be empty")
     if args.port < 1 or args.port > 65535:
         parser.error("--port must be between 1 and 65535")
     try:

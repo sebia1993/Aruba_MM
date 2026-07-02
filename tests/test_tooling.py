@@ -102,6 +102,32 @@ def test_cli_rejects_empty_host_before_connecting(monkeypatch, capsys):
     assert "--host must not be empty" in capsys.readouterr().err
 
 
+def test_cli_rejects_empty_username_before_connecting(monkeypatch, capsys):
+    def fail_runner():
+        raise AssertionError("runner should not be created for empty username")
+
+    monkeypatch.setattr("aruba_mm_cleanup.cli.MmCleanupRunner", fail_runner)
+
+    try:
+        cli_main(
+            [
+                "--host",
+                "192.0.2.10",
+                "--username",
+                " ",
+                "--password",
+                "secret",
+                "--yes",
+            ]
+        )
+    except SystemExit as exc:
+        assert exc.code == 2
+    else:
+        raise AssertionError("CLI should reject empty username")
+
+    assert "--username must not be empty" in capsys.readouterr().err
+
+
 def test_cli_rejects_role_control_characters_before_connecting():
     completed = subprocess.run(
         [
