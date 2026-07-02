@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import deque
 import json
 import os
 import queue
@@ -1090,7 +1091,7 @@ class ArubaMmCleanupGui(tk.Tk):
     def _read_history_records(self, output_dir: Path) -> list[dict[str, object]]:
         jsonl_path = output_dir / HISTORY_FILE_NAME
         if jsonl_path.exists():
-            records: list[dict[str, object]] = []
+            records: deque[dict[str, object]] = deque(maxlen=MAX_HISTORY_ROWS)
             try:
                 with jsonl_path.open(encoding="utf-8") as handle:
                     for line in handle:
@@ -1101,13 +1102,13 @@ class ArubaMmCleanupGui(tk.Tk):
                         if isinstance(record, dict) and isinstance(record.get("mac"), str) and record.get("mac"):
                             records.append(record)
             except (OSError, UnicodeError):
-                return records
-            return records
-        records = []
+                return list(records)
+            return list(records)
+        records: deque[dict[str, object]] = deque(maxlen=MAX_HISTORY_ROWS)
         try:
             audit_paths = sorted(output_dir.glob("*/cleanup_summary.json"))
         except OSError:
-            return records
+            return list(records)
         for audit_path in audit_paths:
             try:
                 audit = json.loads(audit_path.read_text(encoding="utf-8"))
@@ -1133,7 +1134,7 @@ class ArubaMmCleanupGui(tk.Tk):
                 record["run_at"] = run_at
                 record["reappeared"] = mac in reappeared or item.get("status") == "reappeared"
                 records.append(record)
-        return records
+        return list(records)
 
     def _history_row_display(self, record: dict[str, object]) -> tuple[str, str, tuple[str, ...]]:
         status = str(record.get("status") or "")

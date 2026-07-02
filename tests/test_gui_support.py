@@ -646,6 +646,31 @@ def test_history_load_restores_jsonl_rows(tmp_path):
     ]
 
 
+def test_history_read_keeps_only_recent_jsonl_records(tmp_path):
+    output_dir = tmp_path / "outputs"
+    output_dir.mkdir()
+    history_path = output_dir / HISTORY_FILE_NAME
+    records = [
+        json.dumps(
+            {
+                "run_at": f"2026-07-02T13:{index % 60:02d}:00",
+                "mac": f"aa:bb:cc:00:{index // 256:02x}:{index % 256:02x}",
+                "status": "verified_deleted",
+            },
+            ensure_ascii=False,
+        )
+        for index in range(MAX_HISTORY_ROWS + 3)
+    ]
+    history_path.write_text("\n".join(records), encoding="utf-8")
+    app = make_headless_gui()
+
+    loaded = app._read_history_records(output_dir)
+
+    assert len(loaded) == MAX_HISTORY_ROWS
+    assert loaded[0]["mac"] == "aa:bb:cc:00:00:03"
+    assert loaded[-1]["mac"] == "aa:bb:cc:00:01:f6"
+
+
 def test_clear_history_ignores_destroyed_history_table():
     app = make_headless_gui()
     app.history_table = DestroyedHistoryTable()
