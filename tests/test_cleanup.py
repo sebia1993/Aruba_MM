@@ -83,6 +83,15 @@ def test_build_query_command_rejects_control_characters_in_role():
         raise AssertionError("build_query_command should reject role control characters")
 
 
+def test_build_query_command_rejects_missing_role_without_attribute_error():
+    try:
+        build_query_command(None)  # type: ignore[arg-type]
+    except ValueError as exc:
+        assert "Role" in str(exc)
+    else:
+        raise AssertionError("build_query_command should reject missing role values")
+
+
 def test_connect_to_mm_closes_connection_when_enable_fails(monkeypatch):
     class EnableFailingConnection(FakeConnection):
         def enable(self):
