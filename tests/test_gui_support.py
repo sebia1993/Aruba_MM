@@ -165,6 +165,11 @@ class FakeOverlayFrame:
         self.hidden = True
 
 
+class PlacementFailingOverlayFrame(FakeOverlayFrame):
+    def place(self, **_kwargs):
+        raise tk.TclError("invalid command name")
+
+
 def make_headless_gui():
     app = object.__new__(ArubaMmCleanupGui)
     app.counter_vars = {
@@ -1155,6 +1160,25 @@ def test_mac_copy_notice_ignores_hide_timer_schedule_failure():
     assert app.copy_notice_mac_var.get() == "aa:bb:cc:00:00:01"
     assert app.copy_notice_frame.hidden is False
     assert app.copy_notice_after_id is None
+
+
+def test_mac_copy_notice_ignores_overlay_place_failure():
+    app = make_headless_gui()
+    app.copy_notice_frame = PlacementFailingOverlayFrame()
+    table = FakeTreeTable()
+    table.insert(
+        "",
+        "end",
+        iid="aa:bb:cc:00:00:01",
+        values=("aa:bb:cc:00:00:01", "삭제 대상", "2026-07-02 13:00:00", "", ""),
+    )
+
+    ArubaMmCleanupGui._copy_mac_from_table_event(app, FakeClickEvent(), table, "#1")
+
+    assert app.clipboard_values == ["aa:bb:cc:00:00:01"]
+    assert app.copy_notice_title_var.get() == "복사 완료"
+    assert app.copy_notice_mac_var.get() == "aa:bb:cc:00:00:01"
+    assert app.scheduled_callbacks[0][0] == 1000
 
 
 def test_repeated_mac_copy_replaces_center_notice_timer():
