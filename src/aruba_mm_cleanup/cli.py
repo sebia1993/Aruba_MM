@@ -66,7 +66,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         elif event in {"query_done", "delete_done", "delete_error", "run_done", "run_error"}:
             print(f"{event}: {payload}")
 
-    summary = runner.run_once(config, settings, output_dir=args.output_dir, progress_callback=progress)
+    summary = runner.run_once(config, settings, output_dir=args.output_dir.expanduser(), progress_callback=progress)
     print(f"Queried: {summary.queried_count}")
     print(f"Deleted: {summary.delete_success_count}")
     print(f"Failed: {summary.delete_failure_count}")
