@@ -12,7 +12,7 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 from typing import Optional
 
-from .cleanup import MmCleanupRunner
+from .cleanup import MmCleanupRunner, build_query_command
 from .models import CleanupSettings, MmConnectionConfig
 from .parser import normalize_mac
 
@@ -707,6 +707,11 @@ class ArubaMmCleanupGui(tk.Tk):
             timeout = max(5, int(self.timeout_var.get().strip() or "60"))
         except ValueError as exc:
             raise ValueError("장비 응답 대기(초)는 숫자로 입력하세요.") from exc
+        role = self.role_var.get().strip() or DEFAULT_ROLE
+        try:
+            build_query_command(role)
+        except ValueError as exc:
+            raise ValueError(str(exc)) from exc
         config = MmConnectionConfig(
             host=host,
             username=username,
@@ -715,7 +720,7 @@ class ArubaMmCleanupGui(tk.Tk):
             enable_password=self.enable_password_var.get(),
         )
         settings = CleanupSettings(
-            role=self.role_var.get().strip() or DEFAULT_ROLE,
+            role=role,
             timeout=timeout,
             delete_delay_seconds=0,
         )

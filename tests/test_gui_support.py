@@ -237,6 +237,14 @@ def test_read_inputs_reports_clear_timeout_errors():
         ArubaMmCleanupGui._read_inputs(app)
 
 
+def test_read_inputs_rejects_role_control_characters():
+    app = make_input_gui()
+    app.role_var.set("profiling\nshow version")
+
+    with pytest.raises(ValueError, match="Role"):
+        ArubaMmCleanupGui._read_inputs(app)
+
+
 @pytest.mark.parametrize("value", ["0", "-1", "65536"])
 def test_read_inputs_rejects_out_of_range_ports(value):
     app = make_input_gui()

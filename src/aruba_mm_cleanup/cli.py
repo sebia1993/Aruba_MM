@@ -5,7 +5,7 @@ import getpass
 from pathlib import Path
 from typing import Optional
 
-from .cleanup import MmCleanupRunner
+from .cleanup import MmCleanupRunner, build_query_command
 from .models import CleanupSettings, MmConnectionConfig
 
 
@@ -24,6 +24,10 @@ def main(argv: Optional[list[str]] = None) -> int:
     args = parser.parse_args(argv)
     if args.port < 1 or args.port > 65535:
         parser.error("--port must be between 1 and 65535")
+    try:
+        build_query_command(args.role)
+    except ValueError as exc:
+        parser.error(str(exc))
 
     try:
         password = args.password if args.password is not None else getpass.getpass("Password: ")

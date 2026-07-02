@@ -22,6 +22,8 @@ HISTORY_FILE_NAME = "deletion_history.jsonl"
 
 def build_query_command(role: str) -> str:
     role_value = role.strip() or "profiling"
+    if _has_control_character(role_value):
+        raise ValueError("Role에는 제어 문자를 사용할 수 없습니다.")
     return f"show global-user-table list role {role_value}"
 
 
@@ -385,6 +387,10 @@ def classify_delete_response(output: str) -> tuple[str, str]:
 def _delete_error_from_output(output: str) -> str:
     status, error = classify_delete_response(output)
     return "" if status == "deleted" else error
+
+
+def _has_control_character(value: str) -> bool:
+    return any(ord(char) < 32 or ord(char) == 127 for char in value)
 
 
 def _unique_macs(macs: list[str]) -> list[str]:

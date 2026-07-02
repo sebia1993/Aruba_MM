@@ -40,6 +40,15 @@ def test_build_commands_use_role_and_mac():
     assert build_delete_command("aa:bb:cc:00:00:01") == "aaa user delete mac aa:bb:cc:00:00:01"
 
 
+def test_build_query_command_rejects_control_characters_in_role():
+    try:
+        build_query_command("profiling\nshow version")
+    except ValueError as exc:
+        assert "Role" in str(exc)
+    else:
+        raise AssertionError("build_query_command should reject role control characters")
+
+
 def test_connect_to_mm_closes_connection_when_enable_fails(monkeypatch):
     class EnableFailingConnection(FakeConnection):
         def enable(self):

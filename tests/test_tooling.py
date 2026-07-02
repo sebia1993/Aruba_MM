@@ -75,6 +75,32 @@ def test_cli_rejects_out_of_range_port_before_connecting():
     assert "--port must be between 1 and 65535" in output
 
 
+def test_cli_rejects_role_control_characters_before_connecting():
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "aruba_mm_cleanup.cli",
+            "--host",
+            "192.0.2.10",
+            "--username",
+            "admin",
+            "--password",
+            "secret",
+            "--role",
+            "profiling\nshow version",
+            "--yes",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    output = completed.stdout + completed.stderr
+    assert completed.returncode == 2, output
+    assert "Role" in output
+
+
 def test_cli_treats_missing_confirmation_input_as_cancel(monkeypatch, capsys):
     def raise_eof(_prompt):
         raise EOFError
