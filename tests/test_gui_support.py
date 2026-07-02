@@ -1154,6 +1154,32 @@ def test_history_load_ignores_history_row_insert_failure(tmp_path):
     assert app.history_row_counter == 0
 
 
+def test_history_load_skips_records_with_unprintable_run_at_or_mac(tmp_path):
+    class BadText:
+        def __str__(self):
+            raise RuntimeError("bad text")
+
+    output_dir = tmp_path / "outputs"
+    output_dir.mkdir()
+    app = make_headless_gui()
+    app.history_table = FakeHistoryTable()
+    app.history_row_counter = 0
+    app.loaded_history_dir = None
+    app._read_history_records = lambda _output_dir: [
+        {"run_at": BadText(), "mac": "aa:bb:cc:00:00:01", "status": "verified_deleted", "success": True},
+        {"run_at": "2026-07-02T13:01:00", "mac": BadText(), "status": "verified_deleted", "success": True},
+        {"run_at": "2026-07-02T13:02:00", "mac": "aa:bb:cc:00:00:03", "status": "verified_deleted", "success": True},
+    ]
+
+    app._load_history_from_output_dir(output_dir)
+
+    rows = [app.history_table.rows[item]["values"] for item in app.history_table.get_children()]
+    assert rows == [
+        ("", "aa:bb:cc:00:00:01", "삭제 완료", ""),
+        ("2026-07-02 13:02:00", "aa:bb:cc:00:00:03", "삭제 완료", ""),
+    ]
+
+
 def test_history_load_ignores_non_string_jsonl_mac(tmp_path):
     output_dir = tmp_path / "outputs"
     output_dir.mkdir()

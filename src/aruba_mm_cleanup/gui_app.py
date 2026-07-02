@@ -1293,6 +1293,12 @@ class ArubaMmCleanupGui(tk.Tk):
         self.history_row_counter = 0
 
     def _load_history_from_output_dir(self, output_dir: Path, *, force: bool = False) -> None:
+        def safe_text(value: object) -> str:
+            try:
+                return str(value)
+            except Exception:
+                return ""
+
         output_dir = output_dir.expanduser()
         if not force and self.loaded_history_dir == output_dir:
             return
@@ -1306,8 +1312,10 @@ class ArubaMmCleanupGui(tk.Tk):
             return
         self.history_row_counter = 0
         for record in records[-MAX_HISTORY_ROWS:]:
-            run_at = str(record.get("run_at", ""))[:19].replace("T", " ")
-            mac = str(record.get("mac", ""))
+            run_at = safe_text(record.get("run_at", ""))[:19].replace("T", " ")
+            mac = safe_text(record.get("mac", ""))
+            if not mac:
+                continue
             result, error, tags = self._history_row_display(record)
             self._insert_history_row(run_at, mac, result, error, tags=tags)
 
