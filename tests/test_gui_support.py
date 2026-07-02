@@ -842,6 +842,28 @@ def test_summary_handles_invalid_delete_success_count_as_zero():
     assert app.status_var.get() == "완료"
 
 
+def test_summary_ignores_string_target_macs_without_character_counting():
+    app = make_headless_gui()
+    summary = SimpleNamespace(
+        target_macs="aa:bb:cc:00:00:01",
+        queried_count=0,
+        delete_success_count=0,
+        reappeared_count=0,
+        verification_skipped=False,
+        error="",
+        canceled=False,
+        reappeared_macs=[],
+        audit_path=None,
+        audit_error="",
+        history_error="",
+    )
+
+    app._handle_summary(summary)
+
+    assert app.counter_vars["queried"].get() == "7"
+    assert app.status_var.get() == "완료"
+
+
 @pytest.mark.parametrize(
     ("error", "canceled", "verification_skipped"),
     [("boom", False, False), ("", True, False), ("", False, True)],

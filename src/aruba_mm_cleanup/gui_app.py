@@ -853,7 +853,12 @@ class ArubaMmCleanupGui(tk.Tk):
         audit_path = getattr(summary, "audit_path", None)
         audit_error = getattr(summary, "audit_error", "")
         history_error = getattr(summary, "history_error", "")
-        target_count = len(getattr(summary, "target_macs", []) or []) or getattr(summary, "queried_count", 0)
+        target_macs = getattr(summary, "target_macs", []) or []
+        target_count = (
+            len(target_macs)
+            if isinstance(target_macs, (list, tuple, set)) and target_macs
+            else _safe_int(getattr(summary, "queried_count", 0))
+        )
         if not self.current_run_query_counted:
             self._count_current_query(target_count)
         if not self.current_run_delete_counted:
