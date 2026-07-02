@@ -535,7 +535,10 @@ class ArubaMmCleanupGui(tk.Tk):
         try:
             config, settings, output_dir = self._read_inputs()
         except ValueError as exc:
-            messagebox.showerror("입력 오류", str(exc))
+            try:
+                messagebox.showerror("입력 오류", str(exc))
+            except tk.TclError:
+                pass
             return
         self._load_history_from_output_dir(output_dir)
         self.cancel_event.clear()
@@ -557,7 +560,10 @@ class ArubaMmCleanupGui(tk.Tk):
             config, settings, output_dir = self._read_inputs()
             interval = self._read_interval()
         except ValueError as exc:
-            messagebox.showerror("입력 오류", str(exc))
+            try:
+                messagebox.showerror("입력 오류", str(exc))
+            except tk.TclError:
+                pass
             return
         self._load_history_from_output_dir(output_dir)
         self.scheduler_stop_event.clear()

@@ -353,6 +353,40 @@ def test_read_interval_rejects_invalid_values(value):
         ArubaMmCleanupGui._read_interval(app)
 
 
+def test_manual_run_input_error_dialog_failure_does_not_start_worker(monkeypatch):
+    app = make_headless_gui()
+    app._read_inputs = lambda: (_ for _ in ()).throw(ValueError("bad input"))
+    app._load_history_from_output_dir = lambda *_args, **_kwargs: None
+    app._set_running = lambda _running: (_ for _ in ()).throw(AssertionError("worker should not start"))
+    monkeypatch.setattr(
+        gui_app_module.messagebox,
+        "showerror",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(tk.TclError("invalid command name")),
+    )
+
+    ArubaMmCleanupGui.start_manual_run(app)
+
+    assert app.is_running is False
+    assert app.event_queue.empty()
+
+
+def test_scheduler_input_error_dialog_failure_does_not_start_scheduler(monkeypatch):
+    app = make_headless_gui()
+    app._read_inputs = lambda: (_ for _ in ()).throw(ValueError("bad input"))
+    app._load_history_from_output_dir = lambda *_args, **_kwargs: None
+    app._set_running = lambda _running: (_ for _ in ()).throw(AssertionError("scheduler should not start"))
+    monkeypatch.setattr(
+        gui_app_module.messagebox,
+        "showerror",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(tk.TclError("invalid command name")),
+    )
+
+    ArubaMmCleanupGui.start_scheduler(app)
+
+    assert app.scheduler_running is False
+    assert app.event_queue.empty()
+
+
 def test_delete_progress_events_update_rows_without_confirmed_delete_count():
     app = make_headless_gui()
 
