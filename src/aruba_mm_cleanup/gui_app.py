@@ -1148,7 +1148,10 @@ class ArubaMmCleanupGui(tk.Tk):
         row_id = table.identify_row(event.y)
         if not row_id:
             return
-        values = list(table.item(row_id, "values"))
+        try:
+            values = list(table.item(row_id, "values"))
+        except (tk.TclError, TypeError):
+            return
         try:
             column_index = int(mac_column.removeprefix("#")) - 1
         except (AttributeError, ValueError):
