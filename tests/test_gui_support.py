@@ -780,6 +780,20 @@ def test_drain_events_logs_bad_event_and_continues():
     assert app.scheduled_callbacks[-1][0] == 150
 
 
+def test_drain_events_logs_malformed_queue_item_and_continues():
+    app = make_headless_gui()
+    app.scheduler_running = True
+    app.event_queue.put(("progress",))
+    app.event_queue.put(("scheduler_stopped", None))
+
+    ArubaMmCleanupGui._drain_events(app)
+
+    assert any("이벤트 형식 오류" in message for message in app.logs)
+    assert app.scheduler_running is False
+    assert app.timers[-1] == ("-", "대기")
+    assert app.scheduled_callbacks[-1][0] == 150
+
+
 def test_scheduler_stopped_button_failure_still_updates_timer():
     app = make_headless_gui()
     app.scheduler_running = True

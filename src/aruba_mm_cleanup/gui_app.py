@@ -798,7 +798,15 @@ class ArubaMmCleanupGui(tk.Tk):
             return
         try:
             while True:
-                event, payload = self.event_queue.get_nowait()
+                queue_item = self.event_queue.get_nowait()
+                try:
+                    event, payload = queue_item
+                except (TypeError, ValueError) as exc:
+                    try:
+                        self._log(f"WARNING: 이벤트 형식 오류 - {exc}")
+                    except Exception:
+                        pass
+                    continue
                 try:
                     if event == "running":
                         self._set_running(bool(payload))
