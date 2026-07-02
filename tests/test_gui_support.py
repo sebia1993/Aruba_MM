@@ -496,6 +496,21 @@ def test_history_load_ignores_invalid_encoding_jsonl(tmp_path):
     assert app.history_table.get_children() == ()
 
 
+def test_history_load_ignores_invalid_encoding_audit_fallback(tmp_path):
+    output_dir = tmp_path / "outputs"
+    run_dir = output_dir / "20260702_130000_000000"
+    run_dir.mkdir(parents=True)
+    (run_dir / "cleanup_summary.json").write_bytes(b"\xff\xfeinvalid audit")
+    app = make_headless_gui()
+    app.history_table = FakeHistoryTable()
+    app.history_row_counter = 0
+    app.loaded_history_dir = None
+
+    app._load_history_from_output_dir(output_dir)
+
+    assert app.history_table.get_children() == ()
+
+
 def test_log_text_is_capped_to_max_lines():
     app = make_headless_gui()
     app.log_text = FakeLogText()

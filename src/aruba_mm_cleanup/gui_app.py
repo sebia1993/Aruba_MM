@@ -1044,7 +1044,7 @@ class ArubaMmCleanupGui(tk.Tk):
         for audit_path in audit_paths:
             try:
                 audit = json.loads(audit_path.read_text(encoding="utf-8"))
-            except (OSError, json.JSONDecodeError):
+            except (OSError, UnicodeError, json.JSONDecodeError):
                 continue
             run_at = str(audit.get("started_at", ""))
             reappeared = set(audit.get("reappeared_macs") or [])
