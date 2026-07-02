@@ -16,6 +16,7 @@ from .models import (
     DeleteResult,
     MmConnectionConfig,
     QueryResult,
+    _safe_list_items,
     _safe_timestamp_text,
 )
 from .parser import normalize_mac, parse_global_user_table_explained
@@ -362,13 +363,14 @@ def write_audit_summary(summary: CleanupRunSummary, *, output_dir: Path, host: s
 
 
 def append_history_records(summary: CleanupRunSummary, *, output_dir: Path, host: str) -> Optional[Path]:
-    if not summary.delete_results:
+    delete_results = _safe_list_items(getattr(summary, "delete_results", None))
+    if not delete_results:
         return None
     output_dir.mkdir(parents=True, exist_ok=True)
     path = output_dir / HISTORY_FILE_NAME
     run_at = _safe_timestamp_text(getattr(summary, "started_at", None))
     lines: list[str] = []
-    for item in summary.delete_results:
+    for item in delete_results:
         record = {
             "run_at": run_at,
             "host": host,

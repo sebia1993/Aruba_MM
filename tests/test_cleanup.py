@@ -999,6 +999,19 @@ def test_audit_summary_tolerates_invalid_list_containers(tmp_path):
     assert audit["delete_results"] == []
 
 
+def test_history_append_tolerates_invalid_delete_result_container(tmp_path):
+    history_path = tmp_path / HISTORY_FILE_NAME
+    original_content = json.dumps({"run_at": "existing", "mac": "aa:bb:cc:00:00:ff"}) + "\n"
+    history_path.write_text(original_content, encoding="utf-8")
+    summary = CleanupRunSummary(started_at=datetime(2026, 7, 2, 13, 0, 0), role="profiling")
+    summary.delete_results = object()  # type: ignore[assignment]
+
+    path = append_history_records(summary, output_dir=tmp_path, host="192.0.2.10")
+
+    assert path is None
+    assert history_path.read_text(encoding="utf-8") == original_content
+
+
 def test_audit_summary_write_failure_does_not_leave_partial_final_file(tmp_path, monkeypatch):
     summary = CleanupRunSummary(started_at=datetime(2026, 7, 2, 13, 0, 0), role="profiling")
     original_write_text = Path.write_text
