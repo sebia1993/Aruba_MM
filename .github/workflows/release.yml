@@ -107,9 +107,7 @@ jobs:
         shell: pwsh
         run: |
           $tag = "${{ steps.metadata.outputs.tag }}"
-          $assetName = "${{ steps.metadata.outputs.asset_name }}"
           $sha = "${{ github.sha }}"
-          $branch = "${{ github.ref_name }}"
           $before = "${{ github.event.before }}"
 
           if ($before -and $before -notmatch "^0+$") {
@@ -150,23 +148,8 @@ jobs:
           $notes = @"
           # Aruba MM Cleanup $tag
 
-          Aruba Mobility Master/MM의 profiling Role MAC 조회와 삭제 작업을 Windows 11 PC에서 실행할 수 있는 자동 배포 패키지입니다.
-
           ## 변경 내용
           $changeSummaryText
-
-          ## 검증
-          - 기준 커밋: $sha
-          - 브랜치명: $branch
-          - 실행한 검증 명령: powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\validate.ps1
-          - 실행한 빌드 명령: powershell -NoProfile -ExecutionPolicy Bypass -File .\build_windows_gui_exe.ps1
-          - 실행한 패키지 검증: python .\tools\verify_release_package.py --dist .\dist --smoke-cli --smoke-gui --require-cli-smoke --require-gui-smoke
-
-          ## 첨부 파일
-          - Windows ZIP: $assetName
-          - GUI 실행 파일: ArubaMMCleanupGUI.exe
-          - CLI 실행 파일: ArubaMMCleanupCLI.exe
-          - 사용 방법: ZIP 파일을 다운로드한 뒤 Windows 11 PC에서 압축을 풀고 ArubaMMCleanupGUI.exe를 실행하세요.
           "@
           $notes = $notes -replace "(?m)^          ", ""
           $notes | Set-Content -LiteralPath $notesPath -Encoding UTF8

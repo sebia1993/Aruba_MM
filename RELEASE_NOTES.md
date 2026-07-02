@@ -7,9 +7,9 @@
 자동 Release notes는 WLC Role ACL Collector 릴리즈와 같은 간결한 형식으로 생성합니다.
 
 - 제목: `Aruba MM Cleanup vYYYY.MM.DD-HHMMSS`
-- `변경 내용`: `CHANGELOG.md` 최신 섹션의 사용자용 변경 사항
-- `검증`: GitHub Actions Windows runner에서 실행한 검증, 빌드, 패키지 검증 명령
-- `첨부 파일`: Windows ZIP 파일명, GUI/CLI 실행 파일명, 실행 방법
+- `변경 내용`: 한국어 커밋 제목 또는 `Release-Note-KO:` 값의 실제 변경 사항만 기재
+
+검증 명령, 첨부 파일 설명, 세부 커밋 목록, 변경 파일 목록은 GitHub Release 본문에 기재하지 않습니다.
 
 ## 배포 파일 형식
 

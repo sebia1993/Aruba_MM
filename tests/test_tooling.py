@@ -418,16 +418,12 @@ def test_github_actions_release_contract():
     assert '$releaseNote -notmatch "[가-힣]"' in release_workflow
     assert '$changeSummary.Add("- $releaseNote ($shortHash)")' in release_workflow
     assert "CHANGELOG.md" not in release_workflow
-    assert "## 검증" in release_workflow
-    assert "- 기준 커밋: $sha" in release_workflow
-    assert "- 실행한 검증 명령: powershell -NoProfile -ExecutionPolicy Bypass -File .\\tools\\validate.ps1" in release_workflow
-    assert "- 실행한 빌드 명령: powershell -NoProfile -ExecutionPolicy Bypass -File .\\build_windows_gui_exe.ps1" in release_workflow
     assert "--smoke-cli --smoke-gui --require-cli-smoke --require-gui-smoke" in release_workflow
-    assert "- 실행한 패키지 검증: python .\\tools\\verify_release_package.py --dist .\\dist --smoke-cli --smoke-gui --require-cli-smoke --require-gui-smoke" in release_workflow
-    assert "## 첨부 파일" in release_workflow
-    assert "- Windows ZIP: $assetName" in release_workflow
-    assert "- GUI 실행 파일: ArubaMMCleanupGUI.exe" in release_workflow
-    assert "- CLI 실행 파일: ArubaMMCleanupCLI.exe" in release_workflow
+    assert "## 검증" not in release_workflow
+    assert "## 첨부 파일" not in release_workflow
+    assert "- Windows ZIP: $assetName" not in release_workflow
+    assert "- GUI 실행 파일: ArubaMMCleanupGUI.exe" not in release_workflow
+    assert "- CLI 실행 파일: ArubaMMCleanupCLI.exe" not in release_workflow
     assert "세부 커밋 및 변경 파일" not in release_workflow
     assert "### 원본 커밋 목록" not in release_workflow
     assert "### 변경 파일" not in release_workflow
