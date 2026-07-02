@@ -14,6 +14,7 @@ from typing import Optional
 
 from .cleanup import MmCleanupRunner
 from .models import CleanupSettings, MmConnectionConfig
+from .parser import normalize_mac
 
 
 APP_TITLE = "Aruba MM Cleanup Dashboard"
@@ -84,10 +85,7 @@ class ArubaMmCleanupGui(tk.Tk):
         self.timer_state_var = tk.StringVar(value="대기")
         self.counter_vars = {
             "queried": tk.StringVar(value="0"),
-            "deleted": tk.StringVar(value="0"),
-            "failed": tk.StringVar(value="0"),
-            "remaining": tk.StringVar(value="0"),
-            "reappeared": tk.StringVar(value="0"),
+            "deleted": tk.StringVar(value="-"),
         }
 
         self._build_styles()
@@ -320,14 +318,11 @@ class ArubaMmCleanupGui(tk.Tk):
     def _build_cards(self, parent: tk.Widget) -> None:
         frame = tk.Frame(parent, bg=BG)
         frame.grid(row=2, column=0, sticky="ew", pady=(16, 0))
-        for column in range(6):
+        for column in range(3):
             frame.grid_columnconfigure(column, weight=1, uniform="cards")
-        self._card(frame, "조회", self.counter_vars["queried"], 0, TEXT)
-        self._card(frame, "삭제 성공", self.counter_vars["deleted"], 1, TEXT)
-        self._card(frame, "삭제 실패", self.counter_vars["failed"], 2, DANGER)
-        self._card(frame, "남은 MAC", self.counter_vars["remaining"], 3, TEXT)
-        self._card(frame, "재조회", self.counter_vars["reappeared"], 4, DANGER)
-        self._timer_card(frame, 5)
+        self._card(frame, "조회 MAC", self.counter_vars["queried"], 0, TEXT)
+        self._card(frame, "삭제한 총 MAC", self.counter_vars["deleted"], 1, TEXT)
+        self._timer_card(frame, 2)
 
     def _card(self, parent: tk.Widget, title: str, variable: tk.StringVar, column: int, color: str) -> None:
         card = tk.Frame(parent, bg=CARD_BG, highlightbackground=LINE, highlightthickness=1)
@@ -742,7 +737,7 @@ class ArubaMmCleanupGui(tk.Tk):
             self._log(f"QUERY: {payload.get('command')}")
         elif event == "query_done":
             macs = list(payload.get("macs") or [])
-            self.counter_vars["queried"].set(str(payload.get("count", 0)))
+            self.counter_vars["queried"].set(str(len(_unique_display_macs(macs))))
             self._replace_table(macs, "삭제 대상")
             self._log(f"QUERY DONE: {payload.get('count', 0)} MAC(s)")
         elif event == "countdown":
@@ -757,19 +752,15 @@ class ArubaMmCleanupGui(tk.Tk):
             self._log(f"DELETE START: {payload.get('mac')}")
         elif event == "delete_done":
             self._set_row_status(str(payload.get("mac")), "삭제 완료", "")
-            self._increment_counter("deleted")
             self._log(f"DELETE OK: {payload.get('mac')}")
         elif event == "delete_error":
             self._set_row_status(str(payload.get("mac")), "삭제 실패", str(payload.get("error") or ""))
-            self._increment_counter("failed")
             self._log(f"DELETE ERROR: {payload.get('mac')} | {payload.get('error')}")
         elif event == "delete_unknown":
             self._set_row_status(str(payload.get("mac")), "확인 필요", str(payload.get("error") or ""))
-            self._increment_counter("failed")
             self._log(f"DELETE UNKNOWN: {payload.get('mac')} | {payload.get('error')}")
         elif event == "reappeared_macs":
             macs = [str(mac) for mac in payload.get("macs") or []]
-            self.counter_vars["reappeared"].set(str(payload.get("count", len(macs))))
             self.status_var.set("삭제 MAC 재조회됨")
             self._mark_reappeared_rows(macs)
             for mac in macs:
@@ -787,11 +778,12 @@ class ArubaMmCleanupGui(tk.Tk):
             self._log(f"ERROR: {payload.get('error')}")
 
     def _handle_summary(self, summary) -> None:
-        self.counter_vars["queried"].set(str(summary.queried_count))
-        self.counter_vars["deleted"].set(str(summary.delete_success_count))
-        self.counter_vars["failed"].set(str(summary.delete_failure_count))
-        self.counter_vars["remaining"].set(str(summary.remaining_count))
-        self.counter_vars["reappeared"].set(str(summary.reappeared_count))
+        target_count = len(getattr(summary, "target_macs", []) or []) or summary.queried_count
+        self.counter_vars["queried"].set(str(target_count))
+        if summary.error or summary.canceled or getattr(summary, "verification_skipped", False):
+            self.counter_vars["deleted"].set("-")
+        else:
+            self.counter_vars["deleted"].set(str(summary.delete_success_count))
         self._set_timer("-", "대기")
         self.cancel_button.configure(state="disabled")
         if summary.error:
@@ -815,7 +807,7 @@ class ArubaMmCleanupGui(tk.Tk):
     def _replace_table(self, macs: list[str], status: str) -> None:
         self.table.delete(*self.table.get_children())
         now = time.strftime("%Y-%m-%d %H:%M:%S")
-        for mac in macs:
+        for mac in _unique_display_macs(macs):
             self.table.insert("", "end", iid=mac, values=(mac, status, now, "", ""))
 
     def _set_row_status(self, mac: str, status: str, error: str) -> None:
@@ -862,16 +854,8 @@ class ArubaMmCleanupGui(tk.Tk):
         self.timer_state_var.set(state)
 
     def _reset_run_counters(self) -> None:
-        for key in ("deleted", "failed", "remaining", "reappeared"):
-            self.counter_vars[key].set("0")
-
-    def _increment_counter(self, key: str) -> None:
-        value = self.counter_vars[key].get()
-        try:
-            next_value = int(value) + 1
-        except ValueError:
-            next_value = 1
-        self.counter_vars[key].set(str(next_value))
+        self.counter_vars["queried"].set("0")
+        self.counter_vars["deleted"].set("-")
 
     def _sync_settings_visibility(self) -> None:
         if self.settings_frame is None:
@@ -1007,6 +991,18 @@ class ArubaMmCleanupGui(tk.Tk):
             self.destroy()
         except tk.TclError:
             pass
+
+
+def _unique_display_macs(macs: list[str]) -> list[str]:
+    seen: set[str] = set()
+    unique: list[str] = []
+    for mac in macs:
+        normalized = normalize_mac(str(mac)) or str(mac).strip().casefold()
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        unique.append(normalized)
+    return unique
 
 
 def main() -> int:

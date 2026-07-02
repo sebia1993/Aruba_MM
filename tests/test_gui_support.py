@@ -96,9 +96,6 @@ def make_headless_gui():
     app.counter_vars = {
         "queried": FakeVar("7"),
         "deleted": FakeVar("3"),
-        "failed": FakeVar("2"),
-        "remaining": FakeVar("1"),
-        "reappeared": FakeVar("1"),
     }
     app.status_var = FakeVar()
     app.cancel_button = FakeButton()
@@ -189,18 +186,16 @@ def test_read_interval_rejects_invalid_values(value):
         ArubaMmCleanupGui._read_interval(app)
 
 
-def test_delete_progress_events_update_counters_immediately():
+def test_delete_progress_events_update_rows_without_confirmed_delete_count():
     app = make_headless_gui()
-    app.counter_vars["deleted"].set("0")
-    app.counter_vars["failed"].set("0")
+    app.counter_vars["deleted"].set("-")
 
     app._handle_progress("delete_done", {"mac": "aa:bb:cc:00:00:01"})
     app._handle_progress("delete_done", {"mac": "aa:bb:cc:00:00:02"})
     app._handle_progress("delete_error", {"mac": "aa:bb:cc:00:00:03", "error": "Error"})
     app._handle_progress("delete_unknown", {"mac": "aa:bb:cc:00:00:04", "error": "timeout"})
 
-    assert app.counter_vars["deleted"].get() == "2"
-    assert app.counter_vars["failed"].get() == "2"
+    assert app.counter_vars["deleted"].get() == "-"
     assert app.rows == [
         ("aa:bb:cc:00:00:01", "삭제 완료", ""),
         ("aa:bb:cc:00:00:02", "삭제 완료", ""),
@@ -209,16 +204,32 @@ def test_delete_progress_events_update_counters_immediately():
     ]
 
 
+def test_query_done_counts_unique_display_macs():
+    app = make_headless_gui()
+    replaced = []
+    app._replace_table = lambda macs, status: replaced.append((macs, status))
+
+    app._handle_progress(
+        "query_done",
+        {
+            "count": 3,
+            "macs": ["aa-bb-cc-00-00-01", "aa:bb:cc:00:00:01", "aa:bb:cc:00:00:02"],
+        },
+    )
+
+    assert app.counter_vars["queried"].get() == "2"
+    assert replaced == [
+        (["aa-bb-cc-00-00-01", "aa:bb:cc:00:00:01", "aa:bb:cc:00:00:02"], "삭제 대상")
+    ]
+
+
 def test_running_state_resets_current_run_counters():
     app = make_headless_gui()
 
     app._set_running(True)
 
-    assert app.counter_vars["deleted"].get() == "0"
-    assert app.counter_vars["failed"].get() == "0"
-    assert app.counter_vars["remaining"].get() == "0"
-    assert app.counter_vars["reappeared"].get() == "0"
-    assert app.counter_vars["queried"].get() == "7"
+    assert app.counter_vars["deleted"].get() == "-"
+    assert app.counter_vars["queried"].get() == "0"
     assert app.timers[-1] == ("실행 중", "조회/삭제 처리")
     assert app.cancel_button.config["state"] == "disabled"
 
@@ -329,16 +340,17 @@ def test_log_text_is_capped_to_max_lines():
     assert "line 0" not in app.log_text.lines[0]
 
 
-def test_summary_overwrites_progress_counters_with_final_values():
+def test_summary_updates_simple_dashboard_cards_with_final_values():
     app = make_headless_gui()
     app.counter_vars["deleted"].set("9")
-    app.counter_vars["failed"].set("9")
     summary = SimpleNamespace(
         queried_count=4,
+        target_macs=["aa:bb:cc:00:00:01", "aa:bb:cc:00:00:02", "aa:bb:cc:00:00:03"],
         delete_success_count=2,
         delete_failure_count=1,
         remaining_count=1,
         reappeared_count=0,
+        verification_skipped=False,
         error="",
         canceled=False,
         reappeared_macs=[],
@@ -349,8 +361,31 @@ def test_summary_overwrites_progress_counters_with_final_values():
 
     app._handle_summary(summary)
 
-    assert app.counter_vars["queried"].get() == "4"
+    assert app.counter_vars["queried"].get() == "3"
     assert app.counter_vars["deleted"].get() == "2"
-    assert app.counter_vars["failed"].get() == "1"
-    assert app.counter_vars["remaining"].get() == "1"
-    assert app.counter_vars["reappeared"].get() == "0"
+
+
+@pytest.mark.parametrize(
+    ("error", "canceled", "verification_skipped"),
+    [("boom", False, False), ("", True, False), ("", False, True)],
+)
+def test_summary_leaves_confirmed_delete_unknown_without_verification(error, canceled, verification_skipped):
+    app = make_headless_gui()
+    summary = SimpleNamespace(
+        queried_count=4,
+        target_macs=["aa:bb:cc:00:00:01"],
+        delete_success_count=1,
+        reappeared_count=0,
+        verification_skipped=verification_skipped,
+        error=error,
+        canceled=canceled,
+        reappeared_macs=[],
+        audit_path=None,
+        audit_error="",
+        history_error="",
+    )
+
+    app._handle_summary(summary)
+
+    assert app.counter_vars["queried"].get() == "1"
+    assert app.counter_vars["deleted"].get() == "-"
