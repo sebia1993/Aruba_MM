@@ -35,6 +35,14 @@ class FailingDisconnectConnection(FakeConnection):
         raise RuntimeError("disconnect failed")
 
 
+class MissingCommandConnection:
+    def __init__(self):
+        self.disconnected = False
+
+    def disconnect(self):
+        self.disconnected = True
+
+
 def test_build_commands_use_role_and_mac():
     assert build_query_command("profiling") == "show global-user-table list role profiling"
     assert build_delete_command("aa:bb:cc:00:00:01") == "aaa user delete mac aa:bb:cc:00:00:01"
@@ -115,6 +123,31 @@ def test_session_disconnect_failure_is_reported_and_session_is_cleared():
     assert session.is_connected is False
     assert ("warning", {"message": "disconnect failed: disconnect failed", "reason": "manual"}) in events
     assert ("session_disconnected", {"reason": "manual"}) in events
+
+
+def test_session_rejects_invalid_connection_object_and_clears_state():
+    connection = MissingCommandConnection()
+    events = []
+    session = MmSession(connection_factory=lambda _config, _timeout: connection)  # type: ignore[arg-type]
+    config = MmConnectionConfig(host="192.0.2.10", username="admin", password="secret")
+    settings = CleanupSettings(role="profiling", timeout=5, delete_delay_seconds=0)
+
+    try:
+        session.run_command(
+            config,
+            settings,
+            "show version",
+            progress_callback=lambda event, payload: events.append((event, payload)),
+        )
+    except RuntimeError as exc:
+        assert "MM 연결 객체" in str(exc)
+    else:
+        raise AssertionError("session should reject invalid connection objects")
+
+    assert connection.disconnected is True
+    assert session.is_connected is False
+    assert ("connect_start", {"host": "192.0.2.10"}) in events
+    assert not any(event == "connect_done" for event, _payload in events)
 
 
 def test_run_once_deletes_snapshot_and_verifies_remaining(tmp_path):

@@ -82,7 +82,18 @@ class MmSession:
             self.disconnect(progress_callback=progress_callback, reason="config_changed")
 
         self._emit(progress_callback, "connect_start", host=config.host)
-        self._connection = self.connection_factory(config, settings.timeout)
+        connection = self.connection_factory(config, settings.timeout)
+        if not callable(getattr(connection, "send_command_timing", None)) or not callable(
+            getattr(connection, "disconnect", None)
+        ):
+            disconnect = getattr(connection, "disconnect", None)
+            if callable(disconnect):
+                try:
+                    disconnect()
+                except Exception as exc:
+                    self._emit(progress_callback, "warning", message=f"invalid connection cleanup failed: {exc}")
+            raise RuntimeError("MM 연결 객체가 올바르지 않습니다.")
+        self._connection = connection
         self._config = config
         self._emit(progress_callback, "connect_done", host=config.host)
         self._safe_no_paging(settings, progress_callback=progress_callback)
