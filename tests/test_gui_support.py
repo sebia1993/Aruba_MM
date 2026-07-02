@@ -143,6 +143,11 @@ class BadIndexLogText(FakeLogText):
         return "bad-index"
 
 
+class DeleteFailingLogText(FakeLogText):
+    def delete(self, _start, _end):
+        raise tk.TclError("invalid command name")
+
+
 class FakeOverlayFrame:
     def __init__(self):
         self.place_calls = []
@@ -834,6 +839,15 @@ def test_log_keeps_message_when_line_index_is_unexpected():
 
     assert len(app.log_text.lines) == 1
     assert app.log_text.lines[0].endswith("line still recorded")
+    assert app.log_text.state == "disabled"
+
+
+def test_clear_log_restores_disabled_state_when_delete_fails():
+    app = make_headless_gui()
+    app.log_text = DeleteFailingLogText()
+
+    ArubaMmCleanupGui.clear_log(app)
+
     assert app.log_text.state == "disabled"
 
 

@@ -1042,9 +1042,15 @@ class ArubaMmCleanupGui(tk.Tk):
             self.log_text.delete("1.0", f"{overflow + 1}.0")
 
     def clear_log(self) -> None:
-        self.log_text.configure(state="normal")
-        self.log_text.delete("1.0", "end")
-        self.log_text.configure(state="disabled")
+        try:
+            self.log_text.configure(state="normal")
+            self.log_text.delete("1.0", "end")
+            self.log_text.configure(state="disabled")
+        except tk.TclError:
+            try:
+                self.log_text.configure(state="disabled")
+            except tk.TclError:
+                pass
 
     def clear_history(self) -> None:
         try:
