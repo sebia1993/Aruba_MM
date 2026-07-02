@@ -726,26 +726,33 @@ class ArubaMmCleanupGui(tk.Tk):
         return True
 
     def _read_inputs(self) -> tuple[MmConnectionConfig, CleanupSettings, Path]:
-        host = self.host_var.get().strip()
+        try:
+            host = self.host_var.get().strip()
+            username = self.username_var.get().strip()
+            password = self.password_var.get()
+            port_text = self.port_var.get().strip() or "22"
+            timeout_text = self.timeout_var.get().strip() or "60"
+            role = self.role_var.get().strip() or DEFAULT_ROLE
+            enable_password = self.enable_password_var.get()
+            output_dir_text = self.output_dir_var.get().strip()
+        except tk.TclError as exc:
+            raise ValueError("입력값을 읽을 수 없습니다.") from exc
         if not host:
             raise ValueError("MM IP/Host를 입력하세요.")
-        username = self.username_var.get().strip()
         if not username:
             raise ValueError("계정을 입력하세요.")
-        password = self.password_var.get()
         if not password:
             raise ValueError("암호를 입력하세요.")
         try:
-            port = int(self.port_var.get().strip() or "22")
+            port = int(port_text)
         except ValueError as exc:
             raise ValueError("Port는 숫자로 입력하세요.") from exc
         if port < 1 or port > 65535:
             raise ValueError("Port는 1부터 65535 사이 숫자로 입력하세요.")
         try:
-            timeout = max(5, int(self.timeout_var.get().strip() or "60"))
+            timeout = max(5, int(timeout_text))
         except ValueError as exc:
             raise ValueError("장비 응답 대기(초)는 숫자로 입력하세요.") from exc
-        role = self.role_var.get().strip() or DEFAULT_ROLE
         try:
             build_query_command(role)
         except ValueError as exc:
@@ -755,19 +762,21 @@ class ArubaMmCleanupGui(tk.Tk):
             username=username,
             password=password,
             port=port,
-            enable_password=self.enable_password_var.get(),
+            enable_password=enable_password,
         )
         settings = CleanupSettings(
             role=role,
             timeout=timeout,
             delete_delay_seconds=0,
         )
-        output_dir = Path(self.output_dir_var.get().strip() or DEFAULT_OUTPUT_DIR).expanduser()
+        output_dir = Path(output_dir_text or DEFAULT_OUTPUT_DIR).expanduser()
         return config, settings, output_dir
 
     def _read_interval(self) -> int:
         try:
             interval = int(self.interval_var.get().strip() or str(DEFAULT_INTERVAL_SECONDS))
+        except tk.TclError as exc:
+            raise ValueError("주기(초)는 1 이상 숫자로 입력하세요.") from exc
         except ValueError as exc:
             raise ValueError("주기(초)는 1 이상 숫자로 입력하세요.") from exc
         if interval < MIN_INTERVAL_SECONDS:

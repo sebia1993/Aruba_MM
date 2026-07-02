@@ -365,6 +365,27 @@ def test_read_inputs_rejects_out_of_range_ports(value):
         ArubaMmCleanupGui._read_inputs(app)
 
 
+@pytest.mark.parametrize(
+    "field_name",
+    [
+        "host_var",
+        "username_var",
+        "password_var",
+        "port_var",
+        "timeout_var",
+        "role_var",
+        "enable_password_var",
+        "output_dir_var",
+    ],
+)
+def test_read_inputs_reports_destroyed_input_variables(field_name):
+    app = make_input_gui()
+    setattr(app, field_name, FailingGetVar(""))
+
+    with pytest.raises(ValueError, match="입력값"):
+        ArubaMmCleanupGui._read_inputs(app)
+
+
 def test_read_interval_uses_actual_input_value():
     app = make_input_gui()
     app.interval_var.set("1")
@@ -376,6 +397,14 @@ def test_read_interval_uses_actual_input_value():
 def test_read_interval_rejects_invalid_values(value):
     app = make_input_gui()
     app.interval_var.set(value)
+
+    with pytest.raises(ValueError, match="주기\\(초\\)"):
+        ArubaMmCleanupGui._read_interval(app)
+
+
+def test_read_interval_reports_destroyed_interval_variable():
+    app = make_input_gui()
+    app.interval_var = FailingGetVar("1")
 
     with pytest.raises(ValueError, match="주기\\(초\\)"):
         ArubaMmCleanupGui._read_interval(app)
