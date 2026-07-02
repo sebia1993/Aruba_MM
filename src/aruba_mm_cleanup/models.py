@@ -60,9 +60,11 @@ class CleanupRunSummary:
     delete_success_count: int = 0
     delete_failure_count: int = 0
     remaining_count: int = 0
+    reappeared_count: int = 0
     canceled: bool = False
     query_command: str = ""
     target_macs: list[str] = field(default_factory=list)
+    reappeared_macs: list[str] = field(default_factory=list)
     delete_results: list[DeleteResult] = field(default_factory=list)
     audit_path: Optional[Path] = None
     audit_error: str = ""
@@ -78,8 +80,10 @@ class CleanupRunSummary:
             "delete_success_count": self.delete_success_count,
             "delete_failure_count": self.delete_failure_count,
             "remaining_count": self.remaining_count,
+            "reappeared_count": self.reappeared_count,
             "canceled": self.canceled,
             "target_macs": self.target_macs,
+            "reappeared_macs": self.reappeared_macs,
             "delete_results": [
                 {
                     "mac": item.mac,

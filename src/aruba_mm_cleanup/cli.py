@@ -53,10 +53,11 @@ def main(argv: Optional[list[str]] = None) -> int:
     print(f"Deleted: {summary.delete_success_count}")
     print(f"Failed: {summary.delete_failure_count}")
     print(f"Remaining: {summary.remaining_count}")
+    print(f"Reappeared: {summary.reappeared_count}")
     print(f"Audit: {summary.audit_path}")
     if summary.audit_error:
         print(f"Audit warning: {summary.audit_error}")
-    return 1 if summary.error or summary.delete_failure_count else 0
+    return 1 if summary.error or summary.delete_failure_count or summary.reappeared_count else 0
 
 
 if __name__ == "__main__":

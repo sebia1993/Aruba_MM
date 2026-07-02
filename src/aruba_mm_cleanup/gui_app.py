@@ -77,6 +77,7 @@ class ArubaMmCleanupGui(tk.Tk):
             "deleted": tk.StringVar(value="0"),
             "failed": tk.StringVar(value="0"),
             "remaining": tk.StringVar(value="0"),
+            "reappeared": tk.StringVar(value="0"),
         }
 
         self._build_styles()
@@ -308,13 +309,14 @@ class ArubaMmCleanupGui(tk.Tk):
     def _build_cards(self, parent: tk.Widget) -> None:
         frame = tk.Frame(parent, bg=BG)
         frame.grid(row=2, column=0, sticky="ew", pady=(16, 0))
-        for column in range(5):
+        for column in range(6):
             frame.grid_columnconfigure(column, weight=1, uniform="cards")
         self._card(frame, "조회", self.counter_vars["queried"], 0, TEXT)
         self._card(frame, "삭제 성공", self.counter_vars["deleted"], 1, TEXT)
         self._card(frame, "삭제 실패", self.counter_vars["failed"], 2, DANGER)
         self._card(frame, "남은 MAC", self.counter_vars["remaining"], 3, TEXT)
-        self._card(frame, "카운트다운", self.countdown_var, 4, ACCENT)
+        self._card(frame, "재조회", self.counter_vars["reappeared"], 4, DANGER)
+        self._card(frame, "카운트다운", self.countdown_var, 5, ACCENT)
 
     def _card(self, parent: tk.Widget, title: str, variable: tk.StringVar, column: int, color: str) -> None:
         card = tk.Frame(parent, bg=CARD_BG, highlightbackground=LINE, highlightthickness=1)
@@ -347,6 +349,7 @@ class ArubaMmCleanupGui(tk.Tk):
         for key in columns:
             self.table.heading(key, text=headings[key])
             self.table.column(key, width=widths[key], anchor="w")
+        self.table.tag_configure("reappeared", foreground=DANGER)
         self.table.grid(row=1, column=0, sticky="nsew", padx=16, pady=(0, 12))
 
         history_top = tk.Frame(frame, bg=PANEL)
@@ -379,6 +382,7 @@ class ArubaMmCleanupGui(tk.Tk):
         for key in history_columns:
             self.history_table.heading(key, text=history_headings[key])
             self.history_table.column(key, width=history_widths[key], anchor="w")
+        self.history_table.tag_configure("reappeared", foreground=DANGER)
         self.history_table.grid(row=3, column=0, sticky="nsew", padx=16, pady=(0, 14))
 
     def _build_log(self, parent: tk.Widget) -> None:
@@ -661,6 +665,13 @@ class ArubaMmCleanupGui(tk.Tk):
         elif event == "delete_unknown":
             self._set_row_status(str(payload.get("mac")), "확인 필요", str(payload.get("error") or ""))
             self._log(f"DELETE UNKNOWN: {payload.get('mac')} | {payload.get('error')}")
+        elif event == "reappeared_macs":
+            macs = [str(mac) for mac in payload.get("macs") or []]
+            self.counter_vars["reappeared"].set(str(payload.get("count", len(macs))))
+            self.status_var.set("삭제 MAC 재조회됨")
+            self._mark_reappeared_rows(macs)
+            for mac in macs:
+                self._log(f"REAPPEARED: {mac}")
         elif event == "delete_canceled":
             self.status_var.set("이번 삭제 취소됨")
             self.countdown_var.set("-")
@@ -677,14 +688,19 @@ class ArubaMmCleanupGui(tk.Tk):
         self.counter_vars["deleted"].set(str(summary.delete_success_count))
         self.counter_vars["failed"].set(str(summary.delete_failure_count))
         self.counter_vars["remaining"].set(str(summary.remaining_count))
+        self.counter_vars["reappeared"].set(str(summary.reappeared_count))
         self.countdown_var.set("-")
         self.cancel_button.configure(state="disabled")
         if summary.error:
             self.status_var.set("실패")
         elif summary.canceled:
             self.status_var.set("취소됨")
+        elif summary.reappeared_count:
+            self.status_var.set("삭제 MAC 재조회됨")
         else:
             self.status_var.set("완료")
+        if summary.reappeared_macs:
+            self._mark_reappeared_rows(summary.reappeared_macs)
         if summary.audit_path:
             self._log(f"AUDIT: {summary.audit_path}")
         if summary.audit_error:
@@ -702,10 +718,20 @@ class ArubaMmCleanupGui(tk.Tk):
             return
         values = list(self.table.item(mac, "values"))
         values[1] = status
-        if status in {"삭제 완료", "삭제 실패"}:
+        if status in {"삭제 완료", "삭제 실패", "확인 필요", "재조회됨"}:
             values[3] = time.strftime("%Y-%m-%d %H:%M:%S")
         values[4] = error
         self.table.item(mac, values=values)
+        self.table.item(mac, tags=("reappeared",) if status == "재조회됨" else ())
+
+    def _mark_reappeared_rows(self, macs: list[str]) -> None:
+        now = time.strftime("%Y-%m-%d %H:%M:%S")
+        error = "삭제 성공 후 검증 조회에서 다시 발견"
+        for mac in macs:
+            if self.table.exists(mac):
+                self._set_row_status(mac, "재조회됨", error)
+            else:
+                self.table.insert("", "end", iid=mac, values=(mac, "재조회됨", now, now, error), tags=("reappeared",))
 
     def _set_all_pending_status(self, status: str) -> None:
         for item_id in self.table.get_children():
@@ -734,14 +760,21 @@ class ArubaMmCleanupGui(tk.Tk):
         if not summary.delete_results:
             return
         run_at = summary.started_at.strftime("%Y-%m-%d %H:%M:%S")
+        reappeared_macs = set(summary.reappeared_macs)
         for item in summary.delete_results:
-            if item.status == "unknown":
+            tags = ()
+            error = item.error
+            if item.mac in reappeared_macs:
+                result = "재조회됨"
+                error = error or "삭제 성공 후 검증 조회에서 다시 발견"
+                tags = ("reappeared",)
+            elif item.status == "unknown":
                 result = "확인 필요"
             else:
                 result = "삭제 완료" if item.success else "삭제 실패"
             row_id = f"history-{self.history_row_counter}"
             self.history_row_counter += 1
-            self.history_table.insert("", "end", iid=row_id, values=(run_at, item.mac, result, item.error))
+            self.history_table.insert("", "end", iid=row_id, values=(run_at, item.mac, result, error), tags=tags)
         self._cap_history_rows()
 
     def _cap_history_rows(self) -> None:

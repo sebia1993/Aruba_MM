@@ -105,6 +105,15 @@ class MmCleanupRunner:
             summary.delete_failure_count = sum(1 for item in summary.delete_results if not item.success)
             verify = self._query_users(config, settings, progress_callback=progress_callback)
             summary.remaining_count = len(verify.entries)
+            summary.reappeared_macs = _reappeared_deleted_macs(summary.delete_results, verify.macs)
+            summary.reappeared_count = len(summary.reappeared_macs)
+            if summary.reappeared_macs:
+                self._emit(
+                    progress_callback,
+                    "reappeared_macs",
+                    count=summary.reappeared_count,
+                    macs=summary.reappeared_macs,
+                )
             self._emit(
                 progress_callback,
                 "run_done",
@@ -112,6 +121,7 @@ class MmCleanupRunner:
                 delete_success_count=summary.delete_success_count,
                 delete_failure_count=summary.delete_failure_count,
                 remaining_count=summary.remaining_count,
+                reappeared_count=summary.reappeared_count,
             )
         except Exception as exc:
             summary.error = str(exc)
@@ -244,3 +254,9 @@ def _unique_macs(macs: list[str]) -> list[str]:
         seen.add(normalized)
         unique.append(normalized)
     return unique
+
+
+def _reappeared_deleted_macs(delete_results: list[DeleteResult], verify_macs: list[str]) -> list[str]:
+    remaining = set(_unique_macs(verify_macs))
+    deleted_success_macs = [item.mac for item in delete_results if item.success]
+    return [mac for mac in _unique_macs(deleted_success_macs) if mac in remaining]

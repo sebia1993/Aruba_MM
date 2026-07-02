@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 from aruba_mm_cleanup.cleanup import MmCleanupRunner, build_delete_command, build_query_command
@@ -102,6 +103,45 @@ def test_run_once_records_partial_delete_failure(tmp_path):
     assert summary.delete_results[1].error == "Error: not found"
     assert connections == []
     assert connection.disconnected is True
+
+
+def test_run_once_flags_successfully_deleted_mac_that_reappears(tmp_path):
+    first_query = "10.1.1.10 aa:bb:cc:00:00:01 user-a profiling\n10.1.1.11 aa:bb:cc:00:00:02 user-b profiling"
+    verify_query = "10.1.1.10 aa:bb:cc:00:00:01 user-a profiling\n10.1.1.11 aa:bb:cc:00:00:02 user-b profiling"
+    connection = FakeConnection(
+        responses={
+            "no paging": "",
+            "show global-user-table list role profiling": [first_query, verify_query],
+            "aaa user delete mac aa:bb:cc:00:00:01": "User deleted",
+            "aaa user delete mac aa:bb:cc:00:00:02": "Error: not found",
+        }
+    )
+    events = []
+    runner = MmCleanupRunner(
+        connection_factory=lambda _config, _timeout: connection,
+        sleep_func=lambda _seconds: None,
+    )
+
+    summary = runner.run_once(
+        MmConnectionConfig(host="192.0.2.10", username="admin", password="secret"),
+        CleanupSettings(role="profiling", timeout=5, delete_delay_seconds=0),
+        output_dir=tmp_path,
+        progress_callback=lambda event, payload: events.append((event, payload)),
+    )
+
+    assert summary.delete_success_count == 1
+    assert summary.delete_failure_count == 1
+    assert summary.remaining_count == 2
+    assert summary.reappeared_count == 1
+    assert summary.reappeared_macs == ["aa:bb:cc:00:00:01"]
+    assert any(
+        event == "reappeared_macs" and payload["macs"] == ["aa:bb:cc:00:00:01"]
+        for event, payload in events
+    )
+
+    audit = json.loads(summary.audit_path.read_text(encoding="utf-8"))
+    assert audit["reappeared_count"] == 1
+    assert audit["reappeared_macs"] == ["aa:bb:cc:00:00:01"]
 
 
 def test_run_once_can_cancel_during_countdown(tmp_path):

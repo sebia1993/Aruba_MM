@@ -45,10 +45,15 @@ def test_gui_has_manual_scheduler_and_cancel_controls():
     assert "_sync_settings_visibility" in source
     assert "_append_history_rows" in source
     assert "_cap_history_rows" in source
+    assert "_mark_reappeared_rows" in source
     assert "history_row_counter" in source
     assert "runner_lock" in source
     assert "with self.runner_lock" in source
     assert "delete_unknown" in source
+    assert "reappeared_macs" in source
+    assert "REAPPEARED" in source
+    assert "재조회" in source
+    assert "재조회됨" in source
     assert "확인 필요" in source
     assert "if self.scheduler_running" in source
     assert "variant=\"secondary\"" in source
