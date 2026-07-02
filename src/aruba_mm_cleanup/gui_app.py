@@ -772,7 +772,10 @@ class ArubaMmCleanupGui(tk.Tk):
         except queue.Empty:
             pass
         if not self.closing:
-            self._drain_after_id = self.after(150, self._drain_events)
+            try:
+                self._drain_after_id = self.after(150, self._drain_events)
+            except tk.TclError:
+                self._drain_after_id = None
 
     def _handle_progress(self, event: str, payload: dict[str, object]) -> None:
         if event == "connect_start":

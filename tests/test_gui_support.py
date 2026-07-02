@@ -490,6 +490,16 @@ def test_drain_events_handles_missing_progress_payload_as_empty_dict():
     assert not any("이벤트 처리 실패(progress)" in message for message in app.logs)
 
 
+def test_drain_events_ignores_reschedule_failure():
+    app = make_headless_gui()
+    app._drain_after_id = "old-after"
+    app.after = lambda _ms, _callback: (_ for _ in ()).throw(tk.TclError("invalid command name"))
+
+    ArubaMmCleanupGui._drain_events(app)
+
+    assert app._drain_after_id is None
+
+
 def test_on_close_sets_flags_and_schedules_bounded_destroy_without_direct_close():
     app = make_headless_gui()
     app._drain_after_id = "drain-id"
