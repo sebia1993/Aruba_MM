@@ -1010,17 +1010,24 @@ class ArubaMmCleanupGui(tk.Tk):
         jsonl_path = output_dir / HISTORY_FILE_NAME
         if jsonl_path.exists():
             records: list[dict[str, object]] = []
-            with jsonl_path.open(encoding="utf-8") as handle:
-                for line in handle:
-                    try:
-                        record = json.loads(line)
-                    except json.JSONDecodeError:
-                        continue
-                    if isinstance(record, dict) and record.get("mac"):
-                        records.append(record)
+            try:
+                with jsonl_path.open(encoding="utf-8") as handle:
+                    for line in handle:
+                        try:
+                            record = json.loads(line)
+                        except json.JSONDecodeError:
+                            continue
+                        if isinstance(record, dict) and record.get("mac"):
+                            records.append(record)
+            except OSError:
+                return records
             return records
         records = []
-        for audit_path in sorted(output_dir.glob("*/cleanup_summary.json")):
+        try:
+            audit_paths = sorted(output_dir.glob("*/cleanup_summary.json"))
+        except OSError:
+            return records
+        for audit_path in audit_paths:
             try:
                 audit = json.loads(audit_path.read_text(encoding="utf-8"))
             except (OSError, json.JSONDecodeError):
