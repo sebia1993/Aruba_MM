@@ -1490,6 +1490,17 @@ def test_mac_copy_notice_ignores_overlay_place_failure():
     assert app.scheduled_callbacks[0][0] == 1000
 
 
+def test_show_copy_notice_ignores_destroyed_notice_variables():
+    app = make_headless_gui()
+    app.copy_notice_title_var = FailingSetVar("")
+    app.copy_notice_mac_var = FailingSetVar("")
+
+    ArubaMmCleanupGui._show_copy_notice(app, "aa:bb:cc:00:00:01")
+
+    assert app.copy_notice_frame.hidden is False
+    assert app.copy_notice_after_id == "after-1"
+
+
 def test_hide_copy_notice_clears_state_when_overlay_hide_fails():
     app = make_headless_gui()
     app.copy_notice_frame = HideFailingOverlayFrame()
@@ -1501,6 +1512,19 @@ def test_hide_copy_notice_clears_state_when_overlay_hide_fails():
 
     assert app.copy_notice_title_var.get() == ""
     assert app.copy_notice_mac_var.get() == ""
+    assert app.copy_notice_after_id is None
+
+
+def test_hide_copy_notice_ignores_destroyed_notice_variables():
+    app = make_headless_gui()
+    app.copy_notice_title_var = FailingSetVar("복사 완료")
+    app.copy_notice_mac_var = FailingSetVar("aa:bb:cc:00:00:01")
+    app.copy_notice_after_id = "after-1"
+    app.copy_notice_frame.hidden = False
+
+    ArubaMmCleanupGui._hide_copy_notice(app)
+
+    assert app.copy_notice_frame.hidden is True
     assert app.copy_notice_after_id is None
 
 

@@ -1345,8 +1345,14 @@ class ArubaMmCleanupGui(tk.Tk):
                 self.after_cancel(self.copy_notice_after_id)
             except tk.TclError:
                 pass
-        self.copy_notice_title_var.set("복사 완료")
-        self.copy_notice_mac_var.set(mac)
+        try:
+            self.copy_notice_title_var.set("복사 완료")
+        except tk.TclError:
+            pass
+        try:
+            self.copy_notice_mac_var.set(mac)
+        except tk.TclError:
+            pass
         if self.copy_notice_frame is not None:
             try:
                 self.copy_notice_frame.place(relx=0.5, rely=0.5, anchor="center")
@@ -1359,8 +1365,14 @@ class ArubaMmCleanupGui(tk.Tk):
             self.copy_notice_after_id = None
 
     def _hide_copy_notice(self) -> None:
-        self.copy_notice_title_var.set("")
-        self.copy_notice_mac_var.set("")
+        try:
+            self.copy_notice_title_var.set("")
+        except tk.TclError:
+            pass
+        try:
+            self.copy_notice_mac_var.set("")
+        except tk.TclError:
+            pass
         if self.copy_notice_frame is not None:
             try:
                 self.copy_notice_frame.place_forget()
