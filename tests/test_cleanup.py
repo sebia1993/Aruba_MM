@@ -534,6 +534,40 @@ def test_stale_session_reconnects_and_retries_command_once(tmp_path):
     assert any(event == "session_reconnect_start" for event, _payload in events)
 
 
+def test_reconnect_failure_reports_initial_and_retry_errors(tmp_path):
+    query_command = build_query_command("profiling")
+    stale_connection = FakeConnection(responses={"no paging": ""}, failures={query_command: RuntimeError("socket closed")})
+    factory_calls = []
+    events = []
+
+    def failing_factory(config, _timeout):
+        factory_calls.append(config)
+        if len(factory_calls) == 1:
+            return stale_connection
+        raise RuntimeError("reconnect denied")
+
+    runner = MmCleanupRunner(
+        connection_factory=failing_factory,
+        sleep_func=lambda _seconds: None,
+    )
+
+    summary = runner.run_once(
+        MmConnectionConfig(host="192.0.2.10", username="admin", password="secret"),
+        CleanupSettings(role="profiling", timeout=5, delete_delay_seconds=0),
+        output_dir=tmp_path,
+        progress_callback=lambda event, payload: events.append((event, payload)),
+    )
+
+    assert "socket closed" in summary.error
+    assert "reconnect denied" in summary.error
+    assert stale_connection.disconnected is True
+    assert len(factory_calls) == 2
+    assert any(
+        event == "session_reconnect_start" and payload["error"] == "socket closed"
+        for event, payload in events
+    )
+
+
 def test_delete_macs_sends_one_command_per_normalized_mac():
     connection = FakeConnection(
         responses={
