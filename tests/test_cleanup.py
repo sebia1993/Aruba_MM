@@ -780,8 +780,18 @@ def test_audit_save_failure_does_not_break_summary(tmp_path):
 
 
 def test_audit_summary_tolerates_malformed_internal_items(tmp_path):
-    summary = CleanupRunSummary(started_at=datetime(2026, 7, 2, 13, 0, 0), role="profiling")
-    summary.queried_count = 1
+    summary = CleanupRunSummary(started_at=datetime(2026, 7, 2, 13, 0, 0), role=object())  # type: ignore[arg-type]
+    summary.query_command = object()  # type: ignore[assignment]
+    summary.queried_count = object()  # type: ignore[assignment]
+    summary.delete_success_count = "2"  # type: ignore[assignment]
+    summary.delete_failure_count = object()  # type: ignore[assignment]
+    summary.remaining_count = object()  # type: ignore[assignment]
+    summary.reappeared_count = object()  # type: ignore[assignment]
+    summary.canceled = "true"  # type: ignore[assignment]
+    summary.verification_skipped = "false"  # type: ignore[assignment]
+    summary.audit_error = object()  # type: ignore[assignment]
+    summary.history_error = object()  # type: ignore[assignment]
+    summary.error = object()  # type: ignore[assignment]
     summary.target_macs = ["aa:bb:cc:00:00:01", object(), None]  # type: ignore[list-item]
     summary.reappeared_macs = ["aa:bb:cc:00:00:02", object()]  # type: ignore[list-item]
     summary.query_parse_decisions = [
@@ -796,10 +806,22 @@ def test_audit_summary_tolerates_malformed_internal_items(tmp_path):
         {"mac": "aa:bb:cc:00:00:02", "success": "true", "command": object(), "verified_absent": "true"},  # type: ignore[list-item]
     ]
 
-    path = write_audit_summary(summary, output_dir=tmp_path, host="192.0.2.10")
+    path = write_audit_summary(summary, output_dir=tmp_path, host=object())  # type: ignore[arg-type]
 
     audit = json.loads(path.read_text(encoding="utf-8"))
-    assert audit["queried_count"] == 1
+    assert audit["host"]
+    assert audit["role"]
+    assert audit["query_command"]
+    assert audit["queried_count"] == 0
+    assert audit["delete_success_count"] == 2
+    assert audit["delete_failure_count"] == 0
+    assert audit["remaining_count"] == 0
+    assert audit["reappeared_count"] == 0
+    assert audit["canceled"] is True
+    assert audit["verification_skipped"] is False
+    assert audit["audit_error"]
+    assert audit["history_error"]
+    assert audit["error"]
     assert audit["target_macs"][0] == "aa:bb:cc:00:00:01"
     assert audit["target_macs"][1]
     assert audit["target_macs"][2] == ""
