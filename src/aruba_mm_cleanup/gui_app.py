@@ -1485,7 +1485,7 @@ class ArubaMmCleanupGui(tk.Tk):
         try:
             clicked_column = table.identify_column(event.x)
             row_id = table.identify_row(event.y)
-        except tk.TclError:
+        except (AttributeError, tk.TclError):
             return
         if clicked_column != mac_column:
             return
