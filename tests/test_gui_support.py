@@ -125,6 +125,11 @@ class FakeLogText:
         pass
 
 
+class BadIndexLogText(FakeLogText):
+    def index(self, _index):
+        return "bad-index"
+
+
 class FakeOverlayFrame:
     def __init__(self):
         self.place_calls = []
@@ -486,6 +491,17 @@ def test_log_text_is_capped_to_max_lines():
 
     assert len(app.log_text.lines) == MAX_LOG_LINES
     assert "line 0" not in app.log_text.lines[0]
+
+
+def test_log_keeps_message_when_line_index_is_unexpected():
+    app = make_headless_gui()
+    app.log_text = BadIndexLogText()
+
+    ArubaMmCleanupGui._log(app, "line still recorded")
+
+    assert len(app.log_text.lines) == 1
+    assert app.log_text.lines[0].endswith("line still recorded")
+    assert app.log_text.state == "disabled"
 
 
 def test_summary_updates_simple_dashboard_cards_with_final_values():
