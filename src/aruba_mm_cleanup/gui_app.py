@@ -1047,7 +1047,10 @@ class ArubaMmCleanupGui(tk.Tk):
         self.log_text.configure(state="disabled")
 
     def clear_history(self) -> None:
-        self.history_table.delete(*self.history_table.get_children())
+        try:
+            self.history_table.delete(*self.history_table.get_children())
+        except tk.TclError:
+            return
         self.history_row_counter = 0
 
     def _load_history_from_output_dir(self, output_dir: Path, *, force: bool = False) -> None:

@@ -2,6 +2,7 @@ import json
 import queue
 import threading
 import time
+import tkinter as tk
 from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -94,6 +95,11 @@ class FakeTreeTable(FakeHistoryTable):
         if self.order:
             return self.order[0]
         return ""
+
+
+class DestroyedHistoryTable(FakeHistoryTable):
+    def delete(self, *items):
+        raise tk.TclError("invalid command name")
 
 
 class FakeClickEvent:
@@ -556,6 +562,17 @@ def test_history_load_restores_jsonl_rows(tmp_path):
         ("2026-07-02 13:00:00", "aa:bb:cc:00:00:01", "삭제 완료", ""),
         ("2026-07-02 13:01:00", "aa:bb:cc:00:00:02", "재조회됨", "삭제 성공 후 검증 조회에서 다시 발견"),
     ]
+
+
+def test_clear_history_ignores_destroyed_history_table():
+    app = make_headless_gui()
+    app.history_table = DestroyedHistoryTable()
+    app.history_table.insert("", "end", iid="history-0", values=("run", "mac", "result", ""))
+    app.history_row_counter = 1
+
+    ArubaMmCleanupGui.clear_history(app)
+
+    assert app.history_row_counter == 1
 
 
 def test_history_load_ignores_non_string_jsonl_mac(tmp_path):
