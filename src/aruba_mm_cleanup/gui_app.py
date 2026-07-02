@@ -707,12 +707,15 @@ class ArubaMmCleanupGui(tk.Tk):
             self._log(f"DELETE START: {payload.get('mac')}")
         elif event == "delete_done":
             self._set_row_status(str(payload.get("mac")), "삭제 완료", "")
+            self._increment_counter("deleted")
             self._log(f"DELETE OK: {payload.get('mac')}")
         elif event == "delete_error":
             self._set_row_status(str(payload.get("mac")), "삭제 실패", str(payload.get("error") or ""))
+            self._increment_counter("failed")
             self._log(f"DELETE ERROR: {payload.get('mac')} | {payload.get('error')}")
         elif event == "delete_unknown":
             self._set_row_status(str(payload.get("mac")), "확인 필요", str(payload.get("error") or ""))
+            self._increment_counter("failed")
             self._log(f"DELETE UNKNOWN: {payload.get('mac')} | {payload.get('error')}")
         elif event == "reappeared_macs":
             macs = [str(mac) for mac in payload.get("macs") or []]
@@ -795,6 +798,7 @@ class ArubaMmCleanupGui(tk.Tk):
         self.manual_button.configure(state="disabled" if running or self.scheduler_running else "normal")
         self.schedule_button.configure(state="disabled" if running or self.scheduler_running else "normal")
         if running:
+            self._reset_run_counters()
             self._set_timer("실행 중", "조회/삭제 처리")
             self.cancel_button.configure(state="disabled")
         elif not self.scheduler_running:
@@ -804,6 +808,18 @@ class ArubaMmCleanupGui(tk.Tk):
     def _set_timer(self, value: str, state: str) -> None:
         self.timer_value_var.set(value)
         self.timer_state_var.set(state)
+
+    def _reset_run_counters(self) -> None:
+        for key in ("deleted", "failed", "remaining", "reappeared"):
+            self.counter_vars[key].set("0")
+
+    def _increment_counter(self, key: str) -> None:
+        value = self.counter_vars[key].get()
+        try:
+            next_value = int(value) + 1
+        except ValueError:
+            next_value = 1
+        self.counter_vars[key].set(str(next_value))
 
     def _sync_settings_visibility(self) -> None:
         if self.settings_frame is None:

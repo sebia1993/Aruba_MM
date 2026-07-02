@@ -1,4 +1,5 @@
 import inspect
+from types import SimpleNamespace
 
 from aruba_mm_cleanup import __version__
 from aruba_mm_cleanup.gui_app import (
@@ -16,6 +17,53 @@ from aruba_mm_cleanup.gui_app import (
     TEXT,
     ArubaMmCleanupGui,
 )
+
+
+class FakeVar:
+    def __init__(self, value="0"):
+        self.value = value
+
+    def get(self):
+        return self.value
+
+    def set(self, value):
+        self.value = str(value)
+
+
+class FakeButton:
+    def __init__(self):
+        self.config = {}
+
+    def configure(self, **kwargs):
+        self.config.update(kwargs)
+
+
+def make_headless_gui():
+    app = object.__new__(ArubaMmCleanupGui)
+    app.counter_vars = {
+        "queried": FakeVar("7"),
+        "deleted": FakeVar("3"),
+        "failed": FakeVar("2"),
+        "remaining": FakeVar("1"),
+        "reappeared": FakeVar("1"),
+    }
+    app.status_var = FakeVar()
+    app.cancel_button = FakeButton()
+    app.manual_button = FakeButton()
+    app.schedule_button = FakeButton()
+    app.scheduler_running = False
+    app.rows = []
+    app.logs = []
+    app.timers = []
+    app.history_summaries = []
+    app.reappeared_rows = []
+    app._set_row_status = lambda mac, status, error: app.rows.append((mac, status, error))
+    app._log = lambda message: app.logs.append(message)
+    app._set_timer = lambda value, state: app.timers.append((value, state))
+    app._sync_settings_visibility = lambda: None
+    app._append_history_rows = lambda summary: app.history_summaries.append(summary)
+    app._mark_reappeared_rows = lambda macs: app.reappeared_rows.append(macs)
+    return app
 
 
 def test_version_and_gui_constants():
@@ -81,3 +129,65 @@ def test_gui_has_manual_scheduler_and_cancel_controls():
     assert "삭제 성공" in source
     assert "삭제 실패" in source
     assert "남은 MAC" in source
+    assert "_reset_run_counters" in source
+    assert "_increment_counter" in source
+
+
+def test_delete_progress_events_update_counters_immediately():
+    app = make_headless_gui()
+    app.counter_vars["deleted"].set("0")
+    app.counter_vars["failed"].set("0")
+
+    app._handle_progress("delete_done", {"mac": "aa:bb:cc:00:00:01"})
+    app._handle_progress("delete_done", {"mac": "aa:bb:cc:00:00:02"})
+    app._handle_progress("delete_error", {"mac": "aa:bb:cc:00:00:03", "error": "Error"})
+    app._handle_progress("delete_unknown", {"mac": "aa:bb:cc:00:00:04", "error": "timeout"})
+
+    assert app.counter_vars["deleted"].get() == "2"
+    assert app.counter_vars["failed"].get() == "2"
+    assert app.rows == [
+        ("aa:bb:cc:00:00:01", "삭제 완료", ""),
+        ("aa:bb:cc:00:00:02", "삭제 완료", ""),
+        ("aa:bb:cc:00:00:03", "삭제 실패", "Error"),
+        ("aa:bb:cc:00:00:04", "확인 필요", "timeout"),
+    ]
+
+
+def test_running_state_resets_current_run_counters():
+    app = make_headless_gui()
+
+    app._set_running(True)
+
+    assert app.counter_vars["deleted"].get() == "0"
+    assert app.counter_vars["failed"].get() == "0"
+    assert app.counter_vars["remaining"].get() == "0"
+    assert app.counter_vars["reappeared"].get() == "0"
+    assert app.counter_vars["queried"].get() == "7"
+    assert app.timers[-1] == ("실행 중", "조회/삭제 처리")
+    assert app.cancel_button.config["state"] == "disabled"
+
+
+def test_summary_overwrites_progress_counters_with_final_values():
+    app = make_headless_gui()
+    app.counter_vars["deleted"].set("9")
+    app.counter_vars["failed"].set("9")
+    summary = SimpleNamespace(
+        queried_count=4,
+        delete_success_count=2,
+        delete_failure_count=1,
+        remaining_count=1,
+        reappeared_count=0,
+        error="",
+        canceled=False,
+        reappeared_macs=[],
+        audit_path=None,
+        audit_error="",
+    )
+
+    app._handle_summary(summary)
+
+    assert app.counter_vars["queried"].get() == "4"
+    assert app.counter_vars["deleted"].get() == "2"
+    assert app.counter_vars["failed"].get() == "1"
+    assert app.counter_vars["remaining"].get() == "1"
+    assert app.counter_vars["reappeared"].get() == "0"

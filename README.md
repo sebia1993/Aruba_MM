@@ -20,6 +20,7 @@ Aruba MM Cleanup은 Aruba Mobility Master/MM에서 `profiling` Role 사용자 MA
 - 삭제 명령: `aaa user delete mac <mac>`
 - 삭제 대상은 조회 snapshot에서 파싱된 사용자 MAC만 사용합니다.
 - 같은 MAC이 여러 줄에서 발견되어도 정규화된 MAC 기준으로 삭제 명령은 한 번만 실행합니다.
+- GUI의 삭제 성공/실패 수는 각 MAC 삭제 응답을 받을 때마다 바로 갱신하고, 실행 종료 시 최종 summary 값으로 보정합니다.
 - 삭제 명령은 응답 실패 시 재시도하지 않고 `확인 필요`로 기록합니다. 장비에 명령이 들어갔지만 응답만 실패한 경우 같은 MAC 삭제 명령이 재전송되지 않게 하기 위한 정책입니다.
 - BSSID/AP 등 다른 컬럼의 MAC-like 값은 삭제 대상으로 사용하지 않습니다.
 - 삭제 후 같은 조회 명령을 다시 실행해 남은 MAC 수를 표시합니다.
