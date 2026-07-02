@@ -374,8 +374,22 @@ def append_history_records(summary: CleanupRunSummary, *, output_dir: Path, host
             "reappeared": item.status == "reappeared",
         }
         lines.append(json.dumps(record, ensure_ascii=False) + "\n")
-    with path.open("a", encoding="utf-8") as handle:
-        handle.writelines(lines)
+    tmp_path = path.with_name(f"{path.name}.tmp")
+    try:
+        try:
+            existing_content = path.read_bytes()
+        except FileNotFoundError:
+            existing_content = b""
+        tmp_path.write_bytes(existing_content + "".join(lines).encode("utf-8"))
+        tmp_path.replace(path)
+    except Exception:
+        try:
+            tmp_path.unlink()
+        except FileNotFoundError:
+            pass
+        except OSError:
+            pass
+        raise
     return path
 
 

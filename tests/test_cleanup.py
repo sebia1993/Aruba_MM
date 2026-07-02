@@ -851,3 +851,58 @@ def test_history_append_serialization_failure_does_not_partially_append(tmp_path
         raise AssertionError("append_history_records should report JSON serialization failure")
 
     assert history_path.read_text(encoding="utf-8") == original_content
+
+
+def test_history_append_write_failure_does_not_leave_partial_record(tmp_path, monkeypatch):
+    history_path = tmp_path / HISTORY_FILE_NAME
+    original_content = b'{"run_at": "existing", "mac": "aa:bb:cc:00:00:ff"}\n'
+    history_path.write_bytes(original_content)
+    summary = CleanupRunSummary(started_at=datetime(2026, 7, 2, 13, 0, 0), role="profiling")
+    summary.delete_results = [
+        DeleteResult(mac="aa:bb:cc:00:00:01", success=True, command="cmd"),
+    ]
+    original_open = Path.open
+
+    class FailingHistoryAppend:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def writelines(self, lines):
+            with original_open(history_path, "a", encoding="utf-8") as handle:
+                handle.write(lines[0][:20])
+            raise OSError("disk full")
+
+    class FailingHistoryTmpWrite:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def write(self, data):
+            tmp_path = history_path.with_name(f"{history_path.name}.tmp")
+            with original_open(tmp_path, "wb") as handle:
+                handle.write(data[:20])
+            raise OSError("disk full")
+
+    def failing_history_open(path, mode="r", *args, **kwargs):
+        if path == history_path and "a" in mode:
+            return FailingHistoryAppend()
+        if path == history_path.with_name(f"{history_path.name}.tmp") and "w" in mode:
+            return FailingHistoryTmpWrite()
+        return original_open(path, mode, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", failing_history_open)
+
+    try:
+        append_history_records(summary, output_dir=tmp_path, host="192.0.2.10")
+    except OSError as exc:
+        assert "disk full" in str(exc)
+    else:
+        raise AssertionError("append_history_records should report write failure")
+
+    assert history_path.read_bytes() == original_content
+    assert not history_path.with_name(f"{history_path.name}.tmp").exists()
