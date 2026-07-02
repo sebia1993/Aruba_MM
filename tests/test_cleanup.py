@@ -607,6 +607,31 @@ def test_non_string_query_response_is_reported_without_delete(tmp_path):
     assert query_conn.disconnected is True
 
 
+def test_run_once_records_unprintable_top_level_error(tmp_path):
+    class BadErrorText(Exception):
+        def __str__(self):
+            raise RuntimeError("bad error text")
+
+        def __repr__(self):
+            raise RuntimeError("bad error repr")
+
+    events = []
+    runner = MmCleanupRunner(sleep_func=lambda _seconds: None)
+    runner._query_users = lambda *_args, **_kwargs: (_ for _ in ()).throw(BadErrorText())  # type: ignore[method-assign]
+
+    summary = runner.run_once(
+        MmConnectionConfig(host="192.0.2.10", username="admin", password="secret"),
+        CleanupSettings(role="profiling", timeout=5, delete_delay_seconds=0),
+        output_dir=Path(tmp_path),
+        progress_callback=lambda event, payload: events.append((event, payload)),
+    )
+
+    assert summary.error == "BadErrorText"
+    assert summary.delete_results == []
+    assert summary.audit_path and summary.audit_path.exists()
+    assert any(event == "run_error" and payload["error"] == "BadErrorText" for event, payload in events)
+
+
 def test_progress_callback_failure_does_not_abort_run(tmp_path):
     query_conn = FakeConnection(responses={"no paging": "", "show global-user-table list role profiling": ""})
     runner = MmCleanupRunner(

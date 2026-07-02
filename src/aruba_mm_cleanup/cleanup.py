@@ -198,8 +198,9 @@ class MmCleanupRunner:
                 reappeared_count=summary.reappeared_count,
             )
         except Exception as exc:
-            summary.error = str(exc)
-            self._emit(progress_callback, "run_error", error=str(exc))
+            error = _exception_text(exc)
+            summary.error = error
+            self._emit(progress_callback, "run_error", error=error)
         return self._finalize_summary(summary, output_dir=output_dir, host=config.host, progress_callback=progress_callback)
 
     def _delete_macs(
