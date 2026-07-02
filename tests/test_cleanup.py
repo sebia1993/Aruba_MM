@@ -808,6 +808,31 @@ def test_audit_summary_tolerates_malformed_internal_items(tmp_path):
     assert audit["delete_results"][1]["verified_absent"] is True
 
 
+def test_audit_summary_write_failure_does_not_leave_partial_final_file(tmp_path, monkeypatch):
+    summary = CleanupRunSummary(started_at=datetime(2026, 7, 2, 13, 0, 0), role="profiling")
+    original_write_text = Path.write_text
+
+    def failing_tmp_write(path, data, *args, **kwargs):
+        if path.name == "cleanup_summary.json.tmp":
+            original_write_text(path, data[:20], *args, **kwargs)
+            raise OSError("disk full")
+        return original_write_text(path, data, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", failing_tmp_write)
+
+    try:
+        write_audit_summary(summary, output_dir=tmp_path, host="192.0.2.10")
+    except OSError as exc:
+        assert "disk full" in str(exc)
+    else:
+        raise AssertionError("write_audit_summary should report write failure")
+
+    run_dirs = list(tmp_path.iterdir())
+    assert len(run_dirs) == 1
+    assert not (run_dirs[0] / "cleanup_summary.json").exists()
+    assert not (run_dirs[0] / "cleanup_summary.json.tmp").exists()
+
+
 def test_history_append_serialization_failure_does_not_partially_append(tmp_path):
     history_path = tmp_path / HISTORY_FILE_NAME
     original_content = json.dumps({"run_at": "existing", "mac": "aa:bb:cc:00:00:ff"}) + "\n"

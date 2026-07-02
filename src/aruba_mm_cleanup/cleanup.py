@@ -335,10 +335,21 @@ def write_audit_summary(summary: CleanupRunSummary, *, output_dir: Path, host: s
     run_dir = output_dir / summary.started_at.strftime("%Y%m%d_%H%M%S_%f")
     run_dir.mkdir(parents=True, exist_ok=True)
     path = run_dir / "cleanup_summary.json"
-    path.write_text(
-        json.dumps(summary.as_audit_dict(host=host), ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
+    tmp_path = path.with_name(f"{path.name}.tmp")
+    try:
+        tmp_path.write_text(
+            json.dumps(summary.as_audit_dict(host=host), ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        tmp_path.replace(path)
+    except Exception:
+        try:
+            tmp_path.unlink()
+        except FileNotFoundError:
+            pass
+        except OSError:
+            pass
+        raise
     return path
 
 
