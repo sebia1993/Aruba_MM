@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Callable, Optional
 
 from .connection import CommandConnection, connect_to_mm, run_command as send_mm_command
-from .models import CleanupSettings, MmConnectionConfig
+from .models import CleanupSettings, MmConnectionConfig, _safe_text
 
 
 ProgressCallback = Callable[[str, dict[str, object]], None]
@@ -45,7 +45,7 @@ class MmSession:
                 "session_reconnect_start",
                 host=config.host,
                 command=command,
-                error=str(exc),
+                error=_exception_text(exc),
             )
             self.disconnect(progress_callback=progress_callback, reason="reconnect")
             try:
@@ -54,7 +54,8 @@ class MmSession:
             except Exception as retry_exc:
                 self.disconnect(progress_callback=progress_callback, reason="command_failed")
                 raise RuntimeError(
-                    f"MM 명령 실행 실패 후 재시도 실패: 최초 오류={exc}; 재시도 오류={retry_exc}"
+                    "MM 명령 실행 실패 후 재시도 실패: "
+                    f"최초 오류={_exception_text(exc)}; 재시도 오류={_exception_text(retry_exc)}"
                 ) from retry_exc
 
     def disconnect(
@@ -126,3 +127,7 @@ class MmSession:
                 callback(event, payload)
             except Exception:
                 pass
+
+
+def _exception_text(exc: BaseException) -> str:
+    return _safe_text(exc) or exc.__class__.__name__

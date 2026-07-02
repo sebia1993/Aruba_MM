@@ -689,6 +689,42 @@ def test_stale_session_reconnects_and_retries_command_once(tmp_path):
     assert any(event == "session_reconnect_start" for event, _payload in events)
 
 
+def test_stale_session_retries_even_when_initial_error_text_fails(tmp_path):
+    class BadErrorText(Exception):
+        def __str__(self):
+            raise RuntimeError("bad error text")
+
+        def __repr__(self):
+            raise RuntimeError("bad error repr")
+
+    query_command = build_query_command("profiling")
+    stale_connection = FakeConnection(responses={"no paging": ""}, failures={query_command: BadErrorText()})
+    fresh_connection = FakeConnection(responses={"no paging": "", query_command: ""})
+    connections = [stale_connection, fresh_connection]
+    events = []
+    runner = MmCleanupRunner(
+        connection_factory=lambda _config, _timeout: connections.pop(0),
+        sleep_func=lambda _seconds: None,
+    )
+
+    summary = runner.run_once(
+        MmConnectionConfig(host="192.0.2.10", username="admin", password="secret"),
+        CleanupSettings(role="profiling", timeout=5, delete_delay_seconds=0),
+        output_dir=tmp_path,
+        progress_callback=lambda event, payload: events.append((event, payload)),
+    )
+
+    assert summary.error == ""
+    assert summary.queried_count == 0
+    assert connections == []
+    assert stale_connection.disconnected is True
+    assert fresh_connection.disconnected is True
+    assert stale_connection.commands == ["no paging", query_command]
+    assert fresh_connection.commands == ["no paging", query_command]
+    reconnect_payload = next(payload for event, payload in events if event == "session_reconnect_start")
+    assert reconnect_payload["error"] == "BadErrorText"
+
+
 def test_reconnect_failure_reports_initial_and_retry_errors(tmp_path):
     query_command = build_query_command("profiling")
     stale_connection = FakeConnection(responses={"no paging": ""}, failures={query_command: RuntimeError("socket closed")})
