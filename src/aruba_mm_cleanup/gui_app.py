@@ -987,8 +987,11 @@ class ArubaMmCleanupGui(tk.Tk):
         self._sync_settings_visibility()
 
     def _set_timer(self, value: str, state: str) -> None:
-        self.timer_value_var.set(value)
-        self.timer_state_var.set(state)
+        try:
+            self.timer_value_var.set(value)
+            self.timer_state_var.set(state)
+        except tk.TclError:
+            return
 
     def _reset_run_counters(self) -> None:
         self._ensure_cumulative_counters()
@@ -1007,8 +1010,11 @@ class ArubaMmCleanupGui(tk.Tk):
 
     def _sync_counter_vars(self) -> None:
         self._ensure_cumulative_counters()
-        self.counter_vars["queried"].set(str(self.cumulative_queried_count))
-        self.counter_vars["deleted"].set(str(self.cumulative_deleted_count))
+        try:
+            self.counter_vars["queried"].set(str(self.cumulative_queried_count))
+            self.counter_vars["deleted"].set(str(self.cumulative_deleted_count))
+        except tk.TclError:
+            return
 
     def _ensure_cumulative_counters(self) -> None:
         if not hasattr(self, "cumulative_queried_count"):
