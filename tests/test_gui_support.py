@@ -333,6 +333,22 @@ def test_query_done_ignores_string_macs_payload_without_character_rows():
     assert replaced == [([], "삭제 대상", {"type_na_macs": []})]
 
 
+def test_query_done_ignores_non_string_mac_items_without_table_rows():
+    app = make_headless_gui()
+    app.table = FakeTreeTable()
+
+    app._handle_progress(
+        "query_done",
+        {
+            "count": 2,
+            "macs": [["aa:bb:cc:00:00:01"], "aa:bb:cc:00:00:02"],
+        },
+    )
+
+    assert app.counter_vars["queried"].get() == "8"
+    assert app.table.get_children() == ("aa:bb:cc:00:00:02",)
+
+
 def test_query_done_marks_type_na_rows_and_logs_admin_guidance():
     app = make_headless_gui()
     app.table = FakeTreeTable()
