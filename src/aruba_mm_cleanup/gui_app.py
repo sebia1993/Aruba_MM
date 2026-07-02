@@ -1215,7 +1215,10 @@ class ArubaMmCleanupGui(tk.Tk):
         self.copy_notice_title_var.set("")
         self.copy_notice_mac_var.set("")
         if self.copy_notice_frame is not None:
-            self.copy_notice_frame.place_forget()
+            try:
+                self.copy_notice_frame.place_forget()
+            except tk.TclError:
+                pass
         self.copy_notice_after_id = None
 
     def _destroy_window(self) -> None:

@@ -170,6 +170,11 @@ class PlacementFailingOverlayFrame(FakeOverlayFrame):
         raise tk.TclError("invalid command name")
 
 
+class HideFailingOverlayFrame(FakeOverlayFrame):
+    def place_forget(self):
+        raise tk.TclError("invalid command name")
+
+
 def make_headless_gui():
     app = object.__new__(ArubaMmCleanupGui)
     app.counter_vars = {
@@ -1179,6 +1184,20 @@ def test_mac_copy_notice_ignores_overlay_place_failure():
     assert app.copy_notice_title_var.get() == "복사 완료"
     assert app.copy_notice_mac_var.get() == "aa:bb:cc:00:00:01"
     assert app.scheduled_callbacks[0][0] == 1000
+
+
+def test_hide_copy_notice_clears_state_when_overlay_hide_fails():
+    app = make_headless_gui()
+    app.copy_notice_frame = HideFailingOverlayFrame()
+    app.copy_notice_title_var.set("복사 완료")
+    app.copy_notice_mac_var.set("aa:bb:cc:00:00:01")
+    app.copy_notice_after_id = "after-1"
+
+    ArubaMmCleanupGui._hide_copy_notice(app)
+
+    assert app.copy_notice_title_var.get() == ""
+    assert app.copy_notice_mac_var.get() == ""
+    assert app.copy_notice_after_id is None
 
 
 def test_repeated_mac_copy_replaces_center_notice_timer():
