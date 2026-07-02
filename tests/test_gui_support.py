@@ -609,6 +609,14 @@ def test_disconnect_status_update_failure_does_not_skip_log():
     assert "SESSION DISCONNECT REQUEST" in app.logs
 
 
+def test_warning_progress_handles_unprintable_message_without_losing_warning():
+    app = make_headless_gui()
+
+    ArubaMmCleanupGui._handle_progress(app, "warning", {"message": BadErrorText()})
+
+    assert "WARNING: BadErrorText" in app.logs
+
+
 def test_delete_canceled_button_failure_does_not_skip_log():
     app = make_headless_gui()
     app.cancel_button = FailingConfigureButton()

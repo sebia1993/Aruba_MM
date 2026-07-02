@@ -881,7 +881,11 @@ class ArubaMmCleanupGui(tk.Tk):
                 pass
             self._log(f"DISCONNECT: {payload.get('reason')}")
         elif event == "warning":
-            self._log(f"WARNING: {payload.get('message')}")
+            raw_message = payload.get("message")
+            message = (
+                "None" if raw_message is None else (_safe_text(raw_message) or raw_message.__class__.__name__)
+            )
+            self._log(f"WARNING: {message}")
         elif event == "query_start":
             try:
                 self.status_var.set("global-user-table 조회 중")
