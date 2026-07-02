@@ -52,6 +52,7 @@ class MmSession:
                 connection = self._ensure_connected(config, settings, progress_callback=progress_callback)
                 return send_mm_command(connection, command, timeout=settings.timeout)
             except Exception as retry_exc:
+                self.disconnect(progress_callback=progress_callback, reason="command_failed")
                 raise RuntimeError(
                     f"MM 명령 실행 실패 후 재시도 실패: 최초 오류={exc}; 재시도 오류={retry_exc}"
                 ) from retry_exc

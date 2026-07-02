@@ -585,6 +585,35 @@ def test_reconnect_failure_reports_initial_and_retry_errors(tmp_path):
     )
 
 
+def test_session_disconnects_retry_connection_after_retry_command_failure():
+    command = "show version"
+    stale_connection = FakeConnection(responses={"no paging": ""}, failures={command: RuntimeError("socket closed")})
+    retry_connection = FakeConnection(responses={"no paging": ""}, failures={command: RuntimeError("socket still closed")})
+    connections = [stale_connection, retry_connection]
+    events = []
+    session = MmSession(connection_factory=lambda _config, _timeout: connections.pop(0))
+    config = MmConnectionConfig(host="192.0.2.10", username="admin", password="secret")
+    settings = CleanupSettings(role="profiling", timeout=5, delete_delay_seconds=0)
+
+    try:
+        session.run_command(
+            config,
+            settings,
+            command,
+            progress_callback=lambda event, payload: events.append((event, payload)),
+        )
+    except RuntimeError as exc:
+        assert "socket closed" in str(exc)
+        assert "socket still closed" in str(exc)
+    else:
+        raise AssertionError("session retry command failure should be reported")
+
+    assert stale_connection.disconnected is True
+    assert retry_connection.disconnected is True
+    assert session.is_connected is False
+    assert ("session_disconnected", {"reason": "command_failed"}) in events
+
+
 def test_delete_macs_sends_one_command_per_normalized_mac():
     connection = FakeConnection(
         responses={
