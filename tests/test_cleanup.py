@@ -782,6 +782,8 @@ def test_audit_save_failure_does_not_break_summary(tmp_path):
 def test_audit_summary_tolerates_malformed_internal_items(tmp_path):
     summary = CleanupRunSummary(started_at=datetime(2026, 7, 2, 13, 0, 0), role="profiling")
     summary.queried_count = 1
+    summary.target_macs = ["aa:bb:cc:00:00:01", object(), None]  # type: ignore[list-item]
+    summary.reappeared_macs = ["aa:bb:cc:00:00:02", object()]  # type: ignore[list-item]
     summary.query_parse_decisions = [
         ParseDecision(1, "selected", "selected_identity_mac_before_role", mac="aa:bb:cc:00:00:01"),
         object(),  # type: ignore[list-item]
@@ -798,6 +800,11 @@ def test_audit_summary_tolerates_malformed_internal_items(tmp_path):
 
     audit = json.loads(path.read_text(encoding="utf-8"))
     assert audit["queried_count"] == 1
+    assert audit["target_macs"][0] == "aa:bb:cc:00:00:01"
+    assert audit["target_macs"][1]
+    assert audit["target_macs"][2] == ""
+    assert audit["reappeared_macs"][0] == "aa:bb:cc:00:00:02"
+    assert audit["reappeared_macs"][1]
     assert audit["query_parse_decisions"][0]["mac"] == "aa:bb:cc:00:00:01"
     assert audit["query_parse_decisions"][1]["line_number"] == 0
     assert audit["verify_parse_decisions"][0]["line_number"] == 0
