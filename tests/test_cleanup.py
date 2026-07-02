@@ -927,6 +927,27 @@ def test_history_append_serialization_failure_does_not_partially_append(tmp_path
     assert history_path.read_text(encoding="utf-8") == original_content
 
 
+def test_history_append_streams_existing_history_without_whole_file_read(tmp_path, monkeypatch):
+    history_path = tmp_path / HISTORY_FILE_NAME
+    original_record = {"run_at": "existing", "mac": "aa:bb:cc:00:00:ff"}
+    history_path.write_text(json.dumps(original_record) + "\n", encoding="utf-8")
+    summary = CleanupRunSummary(started_at=datetime(2026, 7, 2, 13, 0, 0), role="profiling")
+    summary.delete_results = [
+        DeleteResult(mac="aa:bb:cc:00:00:01", success=True, command="cmd"),
+    ]
+
+    def fail_whole_file_read(_path):
+        raise AssertionError("history file should not be read into memory at once")
+
+    monkeypatch.setattr(Path, "read_bytes", fail_whole_file_read)
+
+    path = append_history_records(summary, output_dir=tmp_path, host="192.0.2.10")
+
+    history = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+    assert history[0] == original_record
+    assert history[1]["mac"] == "aa:bb:cc:00:00:01"
+
+
 def test_history_append_write_failure_does_not_leave_partial_record(tmp_path, monkeypatch):
     history_path = tmp_path / HISTORY_FILE_NAME
     original_content = b'{"run_at": "existing", "mac": "aa:bb:cc:00:00:ff"}\n'

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 import json
+import shutil
 import time
 from datetime import datetime
 from pathlib import Path
@@ -384,11 +385,13 @@ def append_history_records(summary: CleanupRunSummary, *, output_dir: Path, host
         lines.append(json.dumps(record, ensure_ascii=False) + "\n")
     tmp_path = path.with_name(f"{path.name}.tmp")
     try:
-        try:
-            existing_content = path.read_bytes()
-        except FileNotFoundError:
-            existing_content = b""
-        tmp_path.write_bytes(existing_content + "".join(lines).encode("utf-8"))
+        with tmp_path.open("wb") as tmp_handle:
+            try:
+                with path.open("rb") as existing_handle:
+                    shutil.copyfileobj(existing_handle, tmp_handle)
+            except FileNotFoundError:
+                pass
+            tmp_handle.write("".join(lines).encode("utf-8"))
         tmp_path.replace(path)
     except Exception:
         try:
