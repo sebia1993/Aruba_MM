@@ -321,7 +321,10 @@ class MmCleanupRunner:
     @staticmethod
     def _emit(callback: Optional[ProgressCallback], event: str, **payload: object) -> None:
         if callback is not None:
-            callback(event, payload)
+            try:
+                callback(event, payload)
+            except Exception:
+                pass
 
 
 def write_audit_summary(summary: CleanupRunSummary, *, output_dir: Path, host: str) -> Path:

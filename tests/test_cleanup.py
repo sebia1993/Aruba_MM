@@ -391,6 +391,29 @@ def test_zero_query_writes_audit_without_delete(tmp_path):
     assert query_conn.disconnected is True
 
 
+def test_progress_callback_failure_does_not_abort_run(tmp_path):
+    query_conn = FakeConnection(responses={"no paging": "", "show global-user-table list role profiling": ""})
+    runner = MmCleanupRunner(
+        connection_factory=lambda _config, _timeout: query_conn,
+        sleep_func=lambda _seconds: None,
+    )
+
+    def failing_progress(_event, _payload):
+        raise RuntimeError("progress failed")
+
+    summary = runner.run_once(
+        MmConnectionConfig(host="192.0.2.10", username="admin", password="secret"),
+        CleanupSettings(role="profiling", timeout=5, delete_delay_seconds=0),
+        output_dir=tmp_path,
+        progress_callback=failing_progress,
+    )
+
+    assert summary.error == ""
+    assert summary.queried_count == 0
+    assert query_conn.commands == ["no paging", "show global-user-table list role profiling"]
+    assert query_conn.disconnected is True
+
+
 def test_persistent_runner_reuses_session_until_closed(tmp_path):
     first_query = "10.1.1.10 aa:bb:cc:00:00:01 user-a profiling"
     connection = FakeConnection(
