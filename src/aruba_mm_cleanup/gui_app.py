@@ -1109,7 +1109,11 @@ class ArubaMmCleanupGui(tk.Tk):
                 continue
             if len(values) < 2:
                 continue
-            if values[1] in {"삭제 대상", "삭제 중"}:
+            try:
+                should_update = values[1] in {"삭제 대상", "삭제 중"}
+            except Exception:
+                continue
+            if should_update:
                 values[1] = status
                 try:
                     self.table.item(item_id, values=values)

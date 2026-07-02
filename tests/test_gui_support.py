@@ -798,6 +798,28 @@ def test_set_all_pending_status_skips_malformed_rows_and_updates_valid_rows():
     assert app.table.rows["aa:bb:cc:00:00:01"]["values"][1] == "취소됨"
 
 
+def test_set_all_pending_status_skips_unhashable_status_values_and_updates_valid_rows():
+    app = make_headless_gui()
+    app.table = FakeTreeTable()
+    app.table.insert(
+        "",
+        "end",
+        iid="bad-row",
+        values=("bad-row", ["삭제 대상"], "2026-07-02 13:00:00", "", ""),
+    )
+    app.table.insert(
+        "",
+        "end",
+        iid="aa:bb:cc:00:00:01",
+        values=("aa:bb:cc:00:00:01", "삭제 중", "2026-07-02 13:00:00", "", ""),
+    )
+
+    ArubaMmCleanupGui._set_all_pending_status(app, "취소됨")
+
+    assert app.table.rows["bad-row"]["values"][1] == ["삭제 대상"]
+    assert app.table.rows["aa:bb:cc:00:00:01"]["values"][1] == "취소됨"
+
+
 def test_result_table_updates_ignore_destroyed_table():
     app = make_headless_gui()
     app.table = DestroyedTreeTable()
