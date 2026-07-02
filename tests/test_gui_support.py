@@ -2088,6 +2088,34 @@ def test_summary_handles_count_values_with_failing_string_conversion():
     assert app.status_var.get() == "완료"
 
 
+def test_summary_handles_status_values_with_failing_bool_conversion():
+    class BadBool:
+        def __bool__(self):
+            raise RuntimeError("bad bool")
+
+    app = make_headless_gui()
+    summary = SimpleNamespace(
+        target_macs=[],
+        queried_count=0,
+        delete_success_count=1,
+        reappeared_count=BadBool(),
+        verification_skipped=BadBool(),
+        error="",
+        canceled=BadBool(),
+        reappeared_macs=[],
+        audit_path="/tmp/audit.json",
+        audit_error="",
+        history_error="",
+    )
+
+    app._handle_summary(summary)
+
+    assert app.counter_vars["deleted"].get() == "4"
+    assert app.status_var.get() == "완료"
+    assert "AUDIT: /tmp/audit.json" in app.logs
+    assert app.history_summaries == [summary]
+
+
 def test_summary_ignores_string_target_macs_without_character_counting():
     app = make_headless_gui()
     summary = SimpleNamespace(

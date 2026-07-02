@@ -977,11 +977,11 @@ class ArubaMmCleanupGui(tk.Tk):
                 return default
 
         self._ensure_cumulative_counters()
-        error = summary_value("error", "")
-        canceled = bool(summary_value("canceled", False))
-        verification_skipped = bool(summary_value("verification_skipped", False))
+        error = _safe_text(summary_value("error", ""))
+        canceled = _safe_bool(summary_value("canceled", False))
+        verification_skipped = _safe_bool(summary_value("verification_skipped", False))
         delete_success_count = summary_value("delete_success_count", 0)
-        reappeared_count = summary_value("reappeared_count", 0)
+        reappeared_count = _safe_int(summary_value("reappeared_count", 0))
         raw_reappeared_macs = summary_value("reappeared_macs", [])
         if raw_reappeared_macs is None:
             raw_reappeared_macs = []
@@ -992,9 +992,9 @@ class ArubaMmCleanupGui(tk.Tk):
                     reappeared_macs.append(str(mac))
                 except Exception:
                     continue
-        audit_path = summary_value("audit_path", None)
-        audit_error = summary_value("audit_error", "")
-        history_error = summary_value("history_error", "")
+        audit_path = _safe_text(summary_value("audit_path", None))
+        audit_error = _safe_text(summary_value("audit_error", ""))
+        history_error = _safe_text(summary_value("history_error", ""))
         target_macs = summary_value("target_macs", [])
         if target_macs is None:
             target_macs = []
@@ -1555,6 +1555,28 @@ def _safe_int(value: object) -> int:
         return int(str(value))
     except Exception:
         return 0
+
+
+def _safe_bool(value: object) -> bool:
+    try:
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            return value.strip().casefold() in {"1", "true", "yes", "y"}
+        return bool(value)
+    except Exception:
+        return False
+
+
+def _safe_text(value: object) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    try:
+        return str(value)
+    except Exception:
+        return ""
 
 
 def main() -> int:
