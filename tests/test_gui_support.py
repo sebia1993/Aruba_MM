@@ -935,6 +935,34 @@ def test_start_session_close_returns_without_waiting_for_runner_lock():
     assert close_calls == ["closed"]
 
 
+def test_close_runner_session_reports_manual_close_failure():
+    app = make_headless_gui()
+    app.runner_lock = threading.Lock()
+    app.runner = SimpleNamespace(
+        close_session=lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("close failed"))
+    )
+
+    ArubaMmCleanupGui._close_runner_session(app, reason="manual", enqueue_progress=True)
+
+    assert app.event_queue.get_nowait() == (
+        "progress",
+        ("warning", {"message": "session close failed: close failed", "reason": "manual"}),
+    )
+    assert app.event_queue.empty()
+
+
+def test_close_runner_session_ignores_app_close_failure_without_progress():
+    app = make_headless_gui()
+    app.runner_lock = threading.Lock()
+    app.runner = SimpleNamespace(
+        close_session=lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("close failed"))
+    )
+
+    ArubaMmCleanupGui._close_runner_session(app, reason="app_close", enqueue_progress=False)
+
+    assert app.event_queue.empty()
+
+
 def test_history_load_restores_jsonl_rows(tmp_path):
     output_dir = tmp_path / "outputs"
     output_dir.mkdir()

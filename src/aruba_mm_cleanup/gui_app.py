@@ -704,7 +704,17 @@ class ArubaMmCleanupGui(tk.Tk):
         if enqueue_progress:
             progress = lambda event, payload: self._enqueue_event("progress", (event, payload))
         with self.runner_lock:
-            self.runner.close_session(progress_callback=progress, reason=reason)
+            try:
+                self.runner.close_session(progress_callback=progress, reason=reason)
+            except Exception as exc:
+                if enqueue_progress:
+                    self._enqueue_event(
+                        "progress",
+                        (
+                            "warning",
+                            {"message": f"session close failed: {exc}", "reason": reason},
+                        ),
+                    )
 
     def _start_session_close(self, *, reason: str, enqueue_progress: bool) -> None:
         if self.session_close_worker is not None and self.session_close_worker.is_alive():
