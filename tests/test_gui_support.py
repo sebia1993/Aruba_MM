@@ -578,6 +578,20 @@ def test_countdown_progress_handles_invalid_remaining_payload():
     assert app.cancel_button.config["state"] == "disabled"
 
 
+def test_countdown_progress_handles_failing_remaining_conversion():
+    class BadRemaining:
+        def __int__(self):
+            raise RuntimeError("bad remaining")
+
+    app = make_headless_gui()
+
+    ArubaMmCleanupGui._handle_progress(app, "countdown", {"remaining": BadRemaining()})
+
+    assert app.timers[-1] == ("0s", "삭제 시작")
+    assert app.status_var.get() == "삭제 시작"
+    assert app.cancel_button.config["state"] == "disabled"
+
+
 def test_query_done_adds_unique_display_macs_to_cumulative_total():
     app = make_headless_gui()
     replaced = []

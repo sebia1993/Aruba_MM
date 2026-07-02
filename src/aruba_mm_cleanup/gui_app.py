@@ -901,7 +901,7 @@ class ArubaMmCleanupGui(tk.Tk):
         elif event == "countdown":
             try:
                 remaining = int(payload.get("remaining", 0))
-            except TypeError:
+            except (TypeError, RuntimeError, OverflowError):
                 remaining = 0
             self._set_timer(f"{remaining}s", "삭제 시작 대기" if remaining > 0 else "삭제 시작")
             try:
