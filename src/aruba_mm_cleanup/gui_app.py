@@ -789,8 +789,14 @@ class ArubaMmCleanupGui(tk.Tk):
             self._set_timer("실행 중", "조회 처리")
             self._log(f"QUERY: {payload.get('command')}")
         elif event == "query_done":
-            macs = list(payload.get("macs") or [])
-            type_na_macs = [str(mac) for mac in payload.get("type_na_macs") or []]
+            raw_macs = payload.get("macs")
+            raw_type_na_macs = payload.get("type_na_macs")
+            macs = list(raw_macs) if isinstance(raw_macs, (list, tuple, set)) else []
+            type_na_macs = (
+                [str(mac) for mac in raw_type_na_macs]
+                if isinstance(raw_type_na_macs, (list, tuple, set))
+                else []
+            )
             self._count_current_query(len(_unique_display_macs(macs)))
             self._replace_table(macs, "삭제 대상", type_na_macs=type_na_macs)
             self._log(f"QUERY DONE: {payload.get('count', 0)} MAC(s)")

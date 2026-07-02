@@ -321,6 +321,17 @@ def test_query_done_adds_unique_display_macs_to_cumulative_total():
     ]
 
 
+def test_query_done_ignores_string_macs_payload_without_character_rows():
+    app = make_headless_gui()
+    replaced = []
+    app._replace_table = lambda macs, status, **kwargs: replaced.append((macs, status, kwargs))
+
+    app._handle_progress("query_done", {"count": 1, "macs": "aa:bb:cc:00:00:01"})
+
+    assert app.counter_vars["queried"].get() == "7"
+    assert replaced == [([], "삭제 대상", {"type_na_macs": []})]
+
+
 def test_query_done_marks_type_na_rows_and_logs_admin_guidance():
     app = make_headless_gui()
     app.table = FakeTreeTable()
