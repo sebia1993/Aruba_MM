@@ -849,7 +849,12 @@ class ArubaMmCleanupGui(tk.Tk):
         verification_skipped = bool(getattr(summary, "verification_skipped", False))
         delete_success_count = getattr(summary, "delete_success_count", 0)
         reappeared_count = getattr(summary, "reappeared_count", 0)
-        reappeared_macs = getattr(summary, "reappeared_macs", []) or []
+        raw_reappeared_macs = getattr(summary, "reappeared_macs", []) or []
+        reappeared_macs = (
+            [str(mac) for mac in raw_reappeared_macs]
+            if isinstance(raw_reappeared_macs, (list, tuple, set))
+            else []
+        )
         audit_path = getattr(summary, "audit_path", None)
         audit_error = getattr(summary, "audit_error", "")
         history_error = getattr(summary, "history_error", "")

@@ -864,6 +864,28 @@ def test_summary_ignores_string_target_macs_without_character_counting():
     assert app.status_var.get() == "완료"
 
 
+def test_summary_ignores_string_reappeared_macs_without_character_rows():
+    app = make_headless_gui()
+    summary = SimpleNamespace(
+        target_macs=[],
+        queried_count=0,
+        delete_success_count=0,
+        reappeared_count=1,
+        verification_skipped=False,
+        error="",
+        canceled=False,
+        reappeared_macs="aa:bb:cc:00:00:01",
+        audit_path=None,
+        audit_error="",
+        history_error="",
+    )
+
+    app._handle_summary(summary)
+
+    assert app.status_var.get() == "삭제 MAC 재조회됨"
+    assert app.reappeared_rows == []
+
+
 @pytest.mark.parametrize(
     ("error", "canceled", "verification_skipped"),
     [("boom", False, False), ("", True, False), ("", False, True)],
