@@ -933,6 +933,27 @@ def test_audit_summary_tolerates_failing_scalar_conversions(tmp_path):
     assert audit["delete_results"][0]["status"] == "failed"
 
 
+def test_audit_summary_tolerates_failing_optional_bool_conversion(tmp_path):
+    class BadOptionalBool(str):
+        def strip(self, *_args, **_kwargs):
+            raise RuntimeError("bad strip")
+
+    summary = CleanupRunSummary(started_at=datetime(2026, 7, 2, 13, 0, 0), role="profiling")
+    summary.delete_results = [
+        {
+            "mac": "aa:bb:cc:00:00:01",
+            "success": True,
+            "verified_absent": BadOptionalBool("true"),
+        }
+    ]  # type: ignore[list-item]
+
+    path = write_audit_summary(summary, output_dir=tmp_path, host="192.0.2.10")
+
+    audit = json.loads(path.read_text(encoding="utf-8"))
+    assert audit["delete_results"][0]["success"] is True
+    assert audit["delete_results"][0]["verified_absent"] is None
+
+
 def test_summary_writes_tolerate_malformed_started_at(tmp_path):
     class BadStartedAt:
         def isoformat(self, *_args, **_kwargs):

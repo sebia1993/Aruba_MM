@@ -212,12 +212,15 @@ def _safe_bool(value: Any) -> bool:
 
 
 def _safe_optional_bool(value: Any) -> Optional[bool]:
-    if value is None or isinstance(value, bool):
-        return value
-    if isinstance(value, str):
-        normalized = value.strip().casefold()
-        if normalized in {"1", "true", "yes", "y"}:
-            return True
-        if normalized in {"0", "false", "no", "n"}:
-            return False
+    try:
+        if value is None or isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            normalized = value.strip().casefold()
+            if normalized in {"1", "true", "yes", "y"}:
+                return True
+            if normalized in {"0", "false", "no", "n"}:
+                return False
+    except Exception:
+        return None
     return None
