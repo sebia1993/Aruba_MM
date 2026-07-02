@@ -111,22 +111,34 @@ jobs:
           if ($before -and $before -notmatch "^0+$") {
             $range = "$before..$sha"
             $commitHashes = git log --format="%H" $range
-            $changedFiles = git diff --name-only $range
           } else {
             $commitHashes = git log --format="%H" -n 20 $sha
-            $changedFiles = git show --pretty="" --name-only $sha
           }
 
           $changeSummary = New-Object System.Collections.Generic.List[string]
-          foreach ($commitHash in $commitHashes) {
-            if (-not $commitHash) { continue }
-            $shortHash = git rev-parse --short $commitHash
-            $subject = git log -1 --pretty=format:"%s" $commitHash
-            $body = git log -1 --pretty=format:"%b" $commitHash
-            $changeSummary.Add("- $subject ($shortHash)")
-            foreach ($line in ($body -split "`r?`n")) {
-              $trimmed = $line.Trim()
-              if ($trimmed) { $changeSummary.Add("  - $trimmed") }
+          $inLatestChangelog = $false
+          foreach ($line in Get-Content -LiteralPath "CHANGELOG.md" -Encoding UTF8) {
+            if ($line -match "^##\s+") {
+              if ($inLatestChangelog) { break }
+              $inLatestChangelog = $true
+              continue
+            }
+            if ($inLatestChangelog -and $line.Trim().StartsWith("- ")) {
+              $changeSummary.Add($line.Trim())
+            }
+          }
+
+          if ($changeSummary.Count -eq 0) {
+            foreach ($commitHash in $commitHashes) {
+              if (-not $commitHash) { continue }
+              $shortHash = git rev-parse --short $commitHash
+              $subject = git log -1 --pretty=format:"%s" $commitHash
+              $body = git log -1 --pretty=format:"%b" $commitHash
+              $changeSummary.Add("- $subject ($shortHash)")
+              foreach ($line in ($body -split "`r?`n")) {
+                $trimmed = $line.Trim()
+                if ($trimmed) { $changeSummary.Add("  - $trimmed") }
+              }
             }
           }
           if ($changeSummary.Count -eq 0) {
@@ -134,45 +146,27 @@ jobs:
           }
           $changeSummaryText = $changeSummary -join [Environment]::NewLine
 
-          $changedFileLines = @($changedFiles | Where-Object { $_ } | ForEach-Object { "- $_" })
-          if (-not $changedFileLines) {
-            $changedFileLines = @("- 변경 파일을 자동으로 찾지 못했습니다.")
-          }
-          $changedFileText = $changedFileLines -join [Environment]::NewLine
-
-          $commitLines = git log --pretty=format:"- %h %s" -n 20 $sha
-          $commitText = $commitLines -join [Environment]::NewLine
-
           $notesPath = Join-Path $PWD "release_notes.md"
           $notes = @"
-          # aruba-mm-cleanup $tag
+          # Aruba MM Cleanup $tag
 
-          이 릴리즈는 main 브랜치에 반영된 변경 사항을 기준으로 GitHub Actions에서 자동 생성한 Windows 실행 패키지입니다.
+          Aruba Mobility Master/MM의 profiling Role MAC 조회와 삭제 작업을 Windows 11 PC에서 실행할 수 있는 자동 배포 패키지입니다.
 
-          ## 변경내용
+          ## 변경 내용
           $changeSummaryText
 
           ## 검증
-          - 기준 커밋 SHA: $sha
+          - 기준 커밋: $sha
           - 브랜치명: $branch
           - 실행한 검증 명령: powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\validate.ps1
           - 실행한 빌드 명령: powershell -NoProfile -ExecutionPolicy Bypass -File .\build_windows_gui_exe.ps1
           - 실행한 패키지 검증: python .\tools\verify_release_package.py --dist .\dist --smoke-cli
 
-          ## 첨부파일
-          - 산출물 파일명: $assetName
-          - 사용 방법: ZIP 파일을 다운로드한 뒤, Windows 11 PC에서 압축을 풀고 ArubaMMCleanupGUI.exe를 실행하세요.
-
-          <details>
-          <summary>세부 커밋 및 변경 파일</summary>
-
-          ### 원본 커밋 목록
-          $commitText
-
-          ### 변경 파일
-          $changedFileText
-
-          </details>
+          ## 첨부 파일
+          - Windows ZIP: $assetName
+          - GUI 실행 파일: ArubaMMCleanupGUI.exe
+          - CLI 실행 파일: ArubaMMCleanupCLI.exe
+          - 사용 방법: ZIP 파일을 다운로드한 뒤 Windows 11 PC에서 압축을 풀고 ArubaMMCleanupGUI.exe를 실행하세요.
           "@
           $notes = $notes -replace "(?m)^          ", ""
           $notes | Set-Content -LiteralPath $notesPath -Encoding UTF8
@@ -193,7 +187,7 @@ jobs:
           gh release create "${{ steps.metadata.outputs.tag }}" `
             "${{ steps.assets.outputs.asset_path }}#${{ steps.metadata.outputs.asset_name }}" `
             --repo "${{ github.repository }}" `
-            --title "aruba-mm-cleanup ${{ steps.metadata.outputs.tag }}" `
+            --title "Aruba MM Cleanup ${{ steps.metadata.outputs.tag }}" `
             --notes-file "${{ steps.notes.outputs.notes_path }}" `
             --verify-tag `
             --draft
