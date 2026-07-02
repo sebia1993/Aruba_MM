@@ -858,7 +858,7 @@ class ArubaMmCleanupGui(tk.Tk):
             self._count_current_query(target_count)
         if not self.current_run_delete_counted:
             if not (error or canceled or verification_skipped):
-                self.cumulative_deleted_count += int(delete_success_count)
+                self.cumulative_deleted_count += _safe_int(delete_success_count)
             self.current_run_delete_counted = True
             self._sync_counter_vars()
         self._set_timer("-", "대기")
