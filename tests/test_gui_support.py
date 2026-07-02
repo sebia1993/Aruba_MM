@@ -694,6 +694,23 @@ def test_reappeared_macs_ignores_string_payload_without_character_rows():
     assert not any(message.startswith("REAPPEARED:") for message in app.logs)
 
 
+def test_reappeared_macs_skips_bad_mac_text_without_stopping_highlight():
+    class BadText:
+        def __str__(self):
+            raise RuntimeError("bad reappeared mac")
+
+    app = make_headless_gui()
+
+    app._handle_progress(
+        "reappeared_macs",
+        {"macs": [BadText(), "aa:bb:cc:00:00:01"]},
+    )
+
+    assert app.status_var.get() == "삭제 MAC 재조회됨"
+    assert app.reappeared_rows == [["aa:bb:cc:00:00:01"]]
+    assert "REAPPEARED: aa:bb:cc:00:00:01" in app.logs
+
+
 def test_type_na_message_survives_delete_status_updates():
     app = make_headless_gui()
     app.table = FakeTreeTable()
@@ -2053,6 +2070,33 @@ def test_summary_ignores_string_reappeared_macs_without_character_rows():
 
     assert app.status_var.get() == "삭제 MAC 재조회됨"
     assert app.reappeared_rows == []
+
+
+def test_summary_skips_bad_reappeared_mac_text_without_stopping_highlight():
+    class BadText:
+        def __str__(self):
+            raise RuntimeError("bad reappeared mac")
+
+    app = make_headless_gui()
+    summary = SimpleNamespace(
+        target_macs=[],
+        queried_count=0,
+        delete_success_count=0,
+        reappeared_count=1,
+        verification_skipped=False,
+        error="",
+        canceled=False,
+        reappeared_macs=[BadText(), "aa:bb:cc:00:00:01"],
+        audit_path=None,
+        audit_error="",
+        history_error="",
+    )
+
+    app._handle_summary(summary)
+
+    assert app.status_var.get() == "삭제 MAC 재조회됨"
+    assert app.reappeared_rows == [["aa:bb:cc:00:00:01"]]
+    assert app.history_summaries == [summary]
 
 
 @pytest.mark.parametrize(

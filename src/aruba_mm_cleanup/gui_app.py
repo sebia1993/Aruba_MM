@@ -931,7 +931,13 @@ class ArubaMmCleanupGui(tk.Tk):
             self._log(f"DELETE UNKNOWN: {payload.get('mac')} | {payload.get('error')}")
         elif event == "reappeared_macs":
             raw_macs = payload.get("macs")
-            macs = [str(mac) for mac in raw_macs] if isinstance(raw_macs, (list, tuple, set)) else []
+            macs = []
+            if isinstance(raw_macs, (list, tuple, set)):
+                for mac in raw_macs:
+                    try:
+                        macs.append(str(mac))
+                    except Exception:
+                        continue
             try:
                 self.status_var.set("삭제 MAC 재조회됨")
             except tk.TclError:
@@ -979,11 +985,13 @@ class ArubaMmCleanupGui(tk.Tk):
         raw_reappeared_macs = summary_value("reappeared_macs", [])
         if raw_reappeared_macs is None:
             raw_reappeared_macs = []
-        reappeared_macs = (
-            [str(mac) for mac in raw_reappeared_macs]
-            if isinstance(raw_reappeared_macs, (list, tuple, set))
-            else []
-        )
+        reappeared_macs = []
+        if isinstance(raw_reappeared_macs, (list, tuple, set)):
+            for mac in raw_reappeared_macs:
+                try:
+                    reappeared_macs.append(str(mac))
+                except Exception:
+                    continue
         audit_path = summary_value("audit_path", None)
         audit_error = summary_value("audit_error", "")
         history_error = summary_value("history_error", "")
