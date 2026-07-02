@@ -27,10 +27,13 @@ def test_gui_has_manual_scheduler_and_cancel_controls():
     assert "start_scheduler" in source
     assert "stop_scheduler" in source
     assert "cancel_current_delete" in source
+    assert "disconnect_session" in source
+    assert "persistent_session=True" in source
+    assert "WM_DELETE_WINDOW" in source
     assert "이번 삭제 취소" in source
+    assert "세션 연결 해제" in source
     assert "주기 실행 시작" in source
     assert "조회" in source
     assert "삭제 성공" in source
     assert "삭제 실패" in source
     assert "남은 MAC" in source
-

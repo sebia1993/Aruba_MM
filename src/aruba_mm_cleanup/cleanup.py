@@ -8,14 +8,13 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable, Optional
 
-from .connection import CommandConnection, connect_to_mm, run_command
 from .models import CleanupRunSummary, CleanupSettings, DeleteResult, MmConnectionConfig, QueryResult
-from .parser import parse_global_user_table
+from .parser import normalize_mac, parse_global_user_table
+from .session import ConnectionFactory, MmSession
 
 
 ProgressCallback = Callable[[str, dict[str, object]], None]
 CancelCheck = Callable[[], bool]
-ConnectionFactory = Callable[[MmConnectionConfig, int], CommandConnection]
 SleepFunc = Callable[[float], None]
 
 
@@ -33,9 +32,12 @@ class MmCleanupRunner:
         self,
         *,
         connection_factory: Optional[ConnectionFactory] = None,
+        session: Optional[MmSession] = None,
+        persistent_session: bool = False,
         sleep_func: Optional[SleepFunc] = None,
     ) -> None:
-        self.connection_factory = connection_factory or (lambda config, timeout: connect_to_mm(config, timeout=timeout))
+        self.session = session or MmSession(connection_factory=connection_factory)
+        self.persistent_session = persistent_session
         self.sleep_func = sleep_func or time.sleep
 
     def query_users(
@@ -45,25 +47,31 @@ class MmCleanupRunner:
         *,
         progress_callback: Optional[ProgressCallback] = None,
     ) -> QueryResult:
-        command = build_query_command(settings.role)
-        self._emit(progress_callback, "connect_start", host=config.host)
-        connection = self.connection_factory(config, settings.timeout)
         try:
-            self._emit(progress_callback, "connect_done", host=config.host)
-            self._safe_no_paging(connection, settings, progress_callback=progress_callback)
-            self._emit(progress_callback, "query_start", command=command, role=settings.role)
-            output = run_command(connection, command, timeout=settings.timeout)
-            entries = parse_global_user_table(output, role_filter=settings.role)
-            self._emit(
-                progress_callback,
-                "query_done",
-                command=command,
-                count=len(entries),
-                macs=[entry.mac for entry in entries],
-            )
-            return QueryResult(command=command, entries=entries)
+            return self._query_users(config, settings, progress_callback=progress_callback)
         finally:
-            self._disconnect(connection)
+            if not self.persistent_session:
+                self.close_session(progress_callback=progress_callback, reason="run_complete")
+
+    def _query_users(
+        self,
+        config: MmConnectionConfig,
+        settings: CleanupSettings,
+        *,
+        progress_callback: Optional[ProgressCallback] = None,
+    ) -> QueryResult:
+        command = build_query_command(settings.role)
+        self._emit(progress_callback, "query_start", command=command, role=settings.role)
+        output = self.session.run_command(config, settings, command, progress_callback=progress_callback)
+        entries = parse_global_user_table(output, role_filter=settings.role)
+        self._emit(
+            progress_callback,
+            "query_done",
+            command=command,
+            count=len(entries),
+            macs=[entry.mac for entry in entries],
+        )
+        return QueryResult(command=command, entries=entries)
 
     def run_once(
         self,
@@ -78,26 +86,24 @@ class MmCleanupRunner:
         summary = CleanupRunSummary(started_at=started_at, role=settings.role)
         cancel_check = should_cancel or (lambda: False)
         try:
-            query = self.query_users(config, settings, progress_callback=progress_callback)
+            query = self._query_users(config, settings, progress_callback=progress_callback)
             summary.query_command = query.command
             summary.queried_count = len(query.entries)
-            summary.target_macs = query.macs
+            summary.target_macs = _unique_macs(query.macs)
             if not query.entries:
                 self._emit(progress_callback, "run_done", queried_count=0, remaining_count=0)
-                summary.audit_path = write_audit_summary(summary, output_dir=output_dir, host=config.host)
-                return summary
+                return self._finalize_summary(summary, output_dir=output_dir, host=config.host, progress_callback=progress_callback)
 
             if not self._countdown(settings.delete_delay_seconds, progress_callback, cancel_check):
                 summary.canceled = True
                 summary.remaining_count = summary.queried_count
                 self._emit(progress_callback, "delete_canceled", count=summary.queried_count)
-                summary.audit_path = write_audit_summary(summary, output_dir=output_dir, host=config.host)
-                return summary
+                return self._finalize_summary(summary, output_dir=output_dir, host=config.host, progress_callback=progress_callback)
 
-            summary.delete_results = self._delete_macs(config, settings, query.macs, progress_callback)
+            summary.delete_results = self._delete_macs(config, settings, summary.target_macs, progress_callback)
             summary.delete_success_count = sum(1 for item in summary.delete_results if item.success)
             summary.delete_failure_count = sum(1 for item in summary.delete_results if not item.success)
-            verify = self.query_users(config, settings, progress_callback=progress_callback)
+            verify = self._query_users(config, settings, progress_callback=progress_callback)
             summary.remaining_count = len(verify.entries)
             self._emit(
                 progress_callback,
@@ -110,8 +116,7 @@ class MmCleanupRunner:
         except Exception as exc:
             summary.error = str(exc)
             self._emit(progress_callback, "run_error", error=str(exc))
-        summary.audit_path = write_audit_summary(summary, output_dir=output_dir, host=config.host)
-        return summary
+        return self._finalize_summary(summary, output_dir=output_dir, host=config.host, progress_callback=progress_callback)
 
     def _delete_macs(
         self,
@@ -120,56 +125,47 @@ class MmCleanupRunner:
         macs: list[str],
         progress_callback: Optional[ProgressCallback],
     ) -> list[DeleteResult]:
-        self._emit(progress_callback, "delete_connect_start", count=len(macs))
-        connection = self.connection_factory(config, settings.timeout)
+        unique_macs = _unique_macs(macs)
+        self._emit(progress_callback, "delete_batch_start", count=len(unique_macs))
         results: list[DeleteResult] = []
-        try:
-            self._emit(progress_callback, "delete_connect_done", count=len(macs))
-            self._safe_no_paging(connection, settings, progress_callback=progress_callback)
-            for index, mac in enumerate(macs, start=1):
-                command = build_delete_command(mac)
-                self._emit(progress_callback, "delete_start", index=index, total=len(macs), mac=mac, command=command)
-                try:
-                    output = run_command(connection, command, timeout=settings.timeout)
-                    error = _delete_error_from_output(output)
-                    success = not error
-                    results.append(DeleteResult(mac=mac, success=success, command=command, error=error))
-                    self._emit(
-                        progress_callback,
-                        "delete_done" if success else "delete_error",
-                        index=index,
-                        total=len(macs),
-                        mac=mac,
-                        command=command,
-                        error=error,
-                    )
-                except Exception as exc:
-                    error = str(exc)
-                    results.append(DeleteResult(mac=mac, success=False, command=command, error=error))
-                    self._emit(
-                        progress_callback,
-                        "delete_error",
-                        index=index,
-                        total=len(macs),
-                        mac=mac,
-                        command=command,
-                        error=error,
-                    )
-        finally:
-            self._disconnect(connection)
+        for index, mac in enumerate(unique_macs, start=1):
+            command = build_delete_command(mac)
+            self._emit(progress_callback, "delete_start", index=index, total=len(unique_macs), mac=mac, command=command)
+            try:
+                output = self.session.run_command(config, settings, command, progress_callback=progress_callback)
+                error = _delete_error_from_output(output)
+                success = not error
+                results.append(DeleteResult(mac=mac, success=success, command=command, error=error))
+                self._emit(
+                    progress_callback,
+                    "delete_done" if success else "delete_error",
+                    index=index,
+                    total=len(unique_macs),
+                    mac=mac,
+                    command=command,
+                    error=error,
+                )
+            except Exception as exc:
+                error = str(exc)
+                results.append(DeleteResult(mac=mac, success=False, command=command, error=error))
+                self._emit(
+                    progress_callback,
+                    "delete_error",
+                    index=index,
+                    total=len(unique_macs),
+                    mac=mac,
+                    command=command,
+                    error=error,
+                )
         return results
 
-    def _safe_no_paging(
+    def close_session(
         self,
-        connection: CommandConnection,
-        settings: CleanupSettings,
         *,
-        progress_callback: Optional[ProgressCallback],
+        progress_callback: Optional[ProgressCallback] = None,
+        reason: str = "manual",
     ) -> None:
-        try:
-            run_command(connection, "no paging", timeout=settings.timeout)
-        except Exception as exc:
-            self._emit(progress_callback, "warning", message=f"no paging failed: {exc}")
+        self.session.disconnect(progress_callback=progress_callback, reason=reason)
 
     def _countdown(
         self,
@@ -189,12 +185,18 @@ class MmCleanupRunner:
         self._emit(progress_callback, "countdown", remaining=0)
         return True
 
-    @staticmethod
-    def _disconnect(connection: CommandConnection) -> None:
-        try:
-            connection.disconnect()
-        except Exception:
-            pass
+    def _finalize_summary(
+        self,
+        summary: CleanupRunSummary,
+        *,
+        output_dir: Path,
+        host: str,
+        progress_callback: Optional[ProgressCallback],
+    ) -> CleanupRunSummary:
+        if not self.persistent_session:
+            self.close_session(progress_callback=progress_callback, reason="run_complete")
+        summary.audit_path = write_audit_summary(summary, output_dir=output_dir, host=host)
+        return summary
 
     @staticmethod
     def _emit(callback: Optional[ProgressCallback], event: str, **payload: object) -> None:
@@ -219,3 +221,15 @@ def _delete_error_from_output(output: str) -> str:
         if marker in normalized:
             return output.strip() or marker
     return ""
+
+
+def _unique_macs(macs: list[str]) -> list[str]:
+    seen: set[str] = set()
+    unique: list[str] = []
+    for mac in macs:
+        normalized = normalize_mac(mac) or mac.strip().casefold()
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        unique.append(normalized)
+    return unique

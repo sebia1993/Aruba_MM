@@ -48,7 +48,7 @@ class ArubaMmCleanupGui(tk.Tk):
         self.scheduler_stop_event = threading.Event()
         self.is_running = False
         self.scheduler_running = False
-        self.runner = MmCleanupRunner()
+        self.runner = MmCleanupRunner(persistent_session=True)
 
         self.host_var = tk.StringVar()
         self.port_var = tk.StringVar(value="22")
@@ -71,6 +71,7 @@ class ArubaMmCleanupGui(tk.Tk):
 
         self._build_styles()
         self._build_layout()
+        self.protocol("WM_DELETE_WINDOW", self.on_close)
         self.after(150, self._drain_events)
 
     def _build_styles(self) -> None:
@@ -113,6 +114,8 @@ class ArubaMmCleanupGui(tk.Tk):
         self.schedule_button.pack(fill="x", padx=14, pady=8)
         self.stop_schedule_button = self._sidebar_button(sidebar, "주기 실행 정지", self.stop_scheduler, state="disabled")
         self.stop_schedule_button.pack(fill="x", padx=14, pady=8)
+        self.disconnect_button = self._sidebar_button(sidebar, "세션 연결 해제", self.disconnect_session)
+        self.disconnect_button.pack(fill="x", padx=14, pady=8)
 
         main = tk.Frame(self, bg=BG)
         main.grid(row=0, column=1, sticky="nsew", padx=20, pady=20)
@@ -352,6 +355,23 @@ class ArubaMmCleanupGui(tk.Tk):
         self.cancel_event.set()
         self._log("이번 삭제 취소 요청")
 
+    def disconnect_session(self) -> None:
+        if self.is_running:
+            self._log("실행 중에는 세션 연결 해제를 건너뜁니다.")
+            return
+        self.runner.close_session(
+            progress_callback=lambda event, payload: self.event_queue.put(("progress", (event, payload))),
+            reason="manual",
+        )
+        self.status_var.set("세션 연결 해제")
+        self._log("SESSION DISCONNECT REQUEST")
+
+    def on_close(self) -> None:
+        self.scheduler_stop_event.set()
+        self.cancel_event.set()
+        self.runner.close_session(reason="app_close")
+        self.destroy()
+
     def _scheduler_loop(
         self,
         config: MmConnectionConfig,
@@ -457,6 +477,17 @@ class ArubaMmCleanupGui(tk.Tk):
         if event == "connect_start":
             self.status_var.set("MM 접속 중")
             self._log(f"CONNECT: {payload.get('host')}")
+        elif event == "connect_done":
+            self.status_var.set("MM 세션 연결됨")
+            self._log(f"CONNECT OK: {payload.get('host')}")
+        elif event == "session_reconnect_start":
+            self.status_var.set("MM 세션 재접속 중")
+            self._log(f"RECONNECT: {payload.get('command')} | {payload.get('error')}")
+        elif event == "session_disconnected":
+            self.status_var.set("세션 연결 해제")
+            self._log(f"DISCONNECT: {payload.get('reason')}")
+        elif event == "warning":
+            self._log(f"WARNING: {payload.get('message')}")
         elif event == "query_start":
             self.status_var.set("global-user-table 조회 중")
             self._log(f"QUERY: {payload.get('command')}")
