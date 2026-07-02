@@ -596,7 +596,10 @@ class ArubaMmCleanupGui(tk.Tk):
             self._log("실행 중에는 세션 연결 해제를 건너뜁니다.")
             return
         self._start_session_close(reason="manual", enqueue_progress=True)
-        self.status_var.set("세션 연결 해제")
+        try:
+            self.status_var.set("세션 연결 해제")
+        except tk.TclError:
+            pass
         self._log("SESSION DISCONNECT REQUEST")
 
     def on_close(self) -> None:
@@ -780,21 +783,36 @@ class ArubaMmCleanupGui(tk.Tk):
 
     def _handle_progress(self, event: str, payload: dict[str, object]) -> None:
         if event == "connect_start":
-            self.status_var.set("MM 접속 중")
+            try:
+                self.status_var.set("MM 접속 중")
+            except tk.TclError:
+                pass
             self._log(f"CONNECT: {payload.get('host')}")
         elif event == "connect_done":
-            self.status_var.set("MM 세션 연결됨")
+            try:
+                self.status_var.set("MM 세션 연결됨")
+            except tk.TclError:
+                pass
             self._log(f"CONNECT OK: {payload.get('host')}")
         elif event == "session_reconnect_start":
-            self.status_var.set("MM 세션 재접속 중")
+            try:
+                self.status_var.set("MM 세션 재접속 중")
+            except tk.TclError:
+                pass
             self._log(f"RECONNECT: {payload.get('command')} | {payload.get('error')}")
         elif event == "session_disconnected":
-            self.status_var.set("세션 연결 해제")
+            try:
+                self.status_var.set("세션 연결 해제")
+            except tk.TclError:
+                pass
             self._log(f"DISCONNECT: {payload.get('reason')}")
         elif event == "warning":
             self._log(f"WARNING: {payload.get('message')}")
         elif event == "query_start":
-            self.status_var.set("global-user-table 조회 중")
+            try:
+                self.status_var.set("global-user-table 조회 중")
+            except tk.TclError:
+                pass
             self._set_timer("실행 중", "조회 처리")
             self._log(f"QUERY: {payload.get('command')}")
         elif event == "query_done":
@@ -814,10 +832,16 @@ class ArubaMmCleanupGui(tk.Tk):
         elif event == "countdown":
             remaining = int(payload.get("remaining", 0))
             self._set_timer(f"{remaining}s", "삭제 시작 대기" if remaining > 0 else "삭제 시작")
-            self.status_var.set(f"{remaining}초 후 삭제 시작" if remaining > 0 else "삭제 시작")
+            try:
+                self.status_var.set(f"{remaining}초 후 삭제 시작" if remaining > 0 else "삭제 시작")
+            except tk.TclError:
+                pass
             self.cancel_button.configure(state="normal" if remaining > 0 else "disabled")
         elif event == "delete_start":
-            self.status_var.set("MAC 삭제 중")
+            try:
+                self.status_var.set("MAC 삭제 중")
+            except tk.TclError:
+                pass
             self._set_timer("실행 중", "삭제 처리")
             self._set_row_status(str(payload.get("mac")), "삭제 중", "")
             self._log(f"DELETE START: {payload.get('mac')}")
@@ -833,18 +857,27 @@ class ArubaMmCleanupGui(tk.Tk):
         elif event == "reappeared_macs":
             raw_macs = payload.get("macs")
             macs = [str(mac) for mac in raw_macs] if isinstance(raw_macs, (list, tuple, set)) else []
-            self.status_var.set("삭제 MAC 재조회됨")
+            try:
+                self.status_var.set("삭제 MAC 재조회됨")
+            except tk.TclError:
+                pass
             self._mark_reappeared_rows(macs)
             for mac in macs:
                 self._log(f"REAPPEARED: {mac}")
         elif event == "delete_canceled":
-            self.status_var.set("이번 삭제 취소됨")
+            try:
+                self.status_var.set("이번 삭제 취소됨")
+            except tk.TclError:
+                pass
             self._set_timer("-", "대기")
             self.cancel_button.configure(state="disabled")
             self._set_all_pending_status("취소됨")
             self._log(f"CANCELED: {payload.get('count')} pending MAC(s)")
         elif event == "run_error":
-            self.status_var.set("실패")
+            try:
+                self.status_var.set("실패")
+            except tk.TclError:
+                pass
             self._set_timer("-", "대기")
             self.cancel_button.configure(state="disabled")
             self._log(f"ERROR: {payload.get('error')}")
@@ -880,14 +913,17 @@ class ArubaMmCleanupGui(tk.Tk):
             self._sync_counter_vars()
         self._set_timer("-", "대기")
         self.cancel_button.configure(state="disabled")
-        if error:
-            self.status_var.set("실패")
-        elif canceled:
-            self.status_var.set("취소됨")
-        elif reappeared_count:
-            self.status_var.set("삭제 MAC 재조회됨")
-        else:
-            self.status_var.set("완료")
+        try:
+            if error:
+                self.status_var.set("실패")
+            elif canceled:
+                self.status_var.set("취소됨")
+            elif reappeared_count:
+                self.status_var.set("삭제 MAC 재조회됨")
+            else:
+                self.status_var.set("완료")
+        except tk.TclError:
+            pass
         if reappeared_macs:
             self._mark_reappeared_rows(reappeared_macs)
         if audit_path:

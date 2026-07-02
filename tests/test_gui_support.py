@@ -365,6 +365,27 @@ def test_delete_progress_events_update_rows_without_confirmed_delete_count():
     ]
 
 
+def test_progress_status_update_failure_does_not_skip_followup_work():
+    app = make_headless_gui()
+    app.status_var = FailingSetVar()
+
+    ArubaMmCleanupGui._handle_progress(app, "connect_start", {"host": "192.0.2.10"})
+
+    assert "CONNECT: 192.0.2.10" in app.logs
+
+
+def test_disconnect_status_update_failure_does_not_skip_log():
+    app = make_headless_gui()
+    app.status_var = FailingSetVar()
+    close_reasons = []
+    app._start_session_close = lambda **kwargs: close_reasons.append(kwargs)
+
+    ArubaMmCleanupGui.disconnect_session(app)
+
+    assert close_reasons == [{"reason": "manual", "enqueue_progress": True}]
+    assert "SESSION DISCONNECT REQUEST" in app.logs
+
+
 def test_query_done_adds_unique_display_macs_to_cumulative_total():
     app = make_headless_gui()
     replaced = []
@@ -1121,6 +1142,29 @@ def test_summary_updates_simple_dashboard_cards_with_final_values():
 
     assert app.counter_vars["queried"].get() == "10"
     assert app.counter_vars["deleted"].get() == "5"
+
+
+def test_summary_status_update_failure_does_not_skip_audit_or_history():
+    app = make_headless_gui()
+    app.status_var = FailingSetVar()
+    summary = SimpleNamespace(
+        queried_count=1,
+        target_macs=["aa:bb:cc:00:00:01"],
+        delete_success_count=1,
+        reappeared_count=0,
+        verification_skipped=False,
+        error="",
+        canceled=False,
+        reappeared_macs=[],
+        audit_path="/tmp/audit.json",
+        audit_error="",
+        history_error="",
+    )
+
+    ArubaMmCleanupGui._handle_summary(app, summary)
+
+    assert "AUDIT: /tmp/audit.json" in app.logs
+    assert app.history_summaries == [summary]
 
 
 def test_summary_does_not_double_count_query_progress():
