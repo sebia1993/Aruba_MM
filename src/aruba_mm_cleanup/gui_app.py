@@ -962,26 +962,36 @@ class ArubaMmCleanupGui(tk.Tk):
             self._log(f"ERROR: {payload.get('error')}")
 
     def _handle_summary(self, summary) -> None:
+        def summary_value(name: str, default: object) -> object:
+            try:
+                return getattr(summary, name, default)
+            except Exception:
+                return default
+
         self._ensure_cumulative_counters()
-        error = getattr(summary, "error", "")
-        canceled = bool(getattr(summary, "canceled", False))
-        verification_skipped = bool(getattr(summary, "verification_skipped", False))
-        delete_success_count = getattr(summary, "delete_success_count", 0)
-        reappeared_count = getattr(summary, "reappeared_count", 0)
-        raw_reappeared_macs = getattr(summary, "reappeared_macs", []) or []
+        error = summary_value("error", "")
+        canceled = bool(summary_value("canceled", False))
+        verification_skipped = bool(summary_value("verification_skipped", False))
+        delete_success_count = summary_value("delete_success_count", 0)
+        reappeared_count = summary_value("reappeared_count", 0)
+        raw_reappeared_macs = summary_value("reappeared_macs", [])
+        if raw_reappeared_macs is None:
+            raw_reappeared_macs = []
         reappeared_macs = (
             [str(mac) for mac in raw_reappeared_macs]
             if isinstance(raw_reappeared_macs, (list, tuple, set))
             else []
         )
-        audit_path = getattr(summary, "audit_path", None)
-        audit_error = getattr(summary, "audit_error", "")
-        history_error = getattr(summary, "history_error", "")
-        target_macs = getattr(summary, "target_macs", []) or []
+        audit_path = summary_value("audit_path", None)
+        audit_error = summary_value("audit_error", "")
+        history_error = summary_value("history_error", "")
+        target_macs = summary_value("target_macs", [])
+        if target_macs is None:
+            target_macs = []
         target_count = (
             len(target_macs)
             if isinstance(target_macs, (list, tuple, set)) and target_macs
-            else _safe_int(getattr(summary, "queried_count", 0))
+            else _safe_int(summary_value("queried_count", 0))
         )
         if not self.current_run_query_counted:
             self._count_current_query(target_count)

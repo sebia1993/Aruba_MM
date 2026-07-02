@@ -1596,6 +1596,61 @@ def test_summary_handles_missing_status_and_count_fields_as_defaults():
     assert app.logs == []
 
 
+def test_summary_handles_failing_attribute_access_as_defaults():
+    class FailingSummary:
+        target_macs = []
+
+        @property
+        def error(self):
+            raise RuntimeError("bad error")
+
+        @property
+        def canceled(self):
+            raise RuntimeError("bad canceled")
+
+        @property
+        def verification_skipped(self):
+            raise RuntimeError("bad verification")
+
+        @property
+        def delete_success_count(self):
+            raise RuntimeError("bad delete count")
+
+        @property
+        def reappeared_count(self):
+            raise RuntimeError("bad reappeared count")
+
+        @property
+        def reappeared_macs(self):
+            raise RuntimeError("bad reappeared macs")
+
+        @property
+        def queried_count(self):
+            raise RuntimeError("bad queried count")
+
+        @property
+        def audit_path(self):
+            raise RuntimeError("bad audit path")
+
+        @property
+        def audit_error(self):
+            raise RuntimeError("bad audit error")
+
+        @property
+        def history_error(self):
+            raise RuntimeError("bad history error")
+
+    app = make_headless_gui()
+    summary = FailingSummary()
+
+    app._handle_summary(summary)
+
+    assert app.counter_vars["queried"].get() == "7"
+    assert app.counter_vars["deleted"].get() == "3"
+    assert app.status_var.get() == "완료"
+    assert app.history_summaries == [summary]
+
+
 def test_summary_handles_invalid_delete_success_count_as_zero():
     app = make_headless_gui()
     summary = SimpleNamespace(
