@@ -1012,6 +1012,24 @@ def test_history_append_tolerates_invalid_delete_result_container(tmp_path):
     assert history_path.read_text(encoding="utf-8") == original_content
 
 
+def test_history_append_skips_invalid_delete_result_items(tmp_path):
+    history_path = tmp_path / HISTORY_FILE_NAME
+    original_record = {"run_at": "existing", "mac": "aa:bb:cc:00:00:ff"}
+    history_path.write_text(json.dumps(original_record) + "\n", encoding="utf-8")
+    summary = CleanupRunSummary(started_at=datetime(2026, 7, 2, 13, 0, 0), role="profiling")
+    summary.delete_results = [
+        object(),  # type: ignore[list-item]
+        DeleteResult(mac="aa:bb:cc:00:00:01", success=True, command="cmd"),
+    ]
+
+    path = append_history_records(summary, output_dir=tmp_path, host="192.0.2.10")
+
+    history = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+    assert history[0] == original_record
+    assert history[1]["mac"] == "aa:bb:cc:00:00:01"
+    assert history[1]["result"] == "삭제 완료"
+
+
 def test_audit_summary_write_failure_does_not_leave_partial_final_file(tmp_path, monkeypatch):
     summary = CleanupRunSummary(started_at=datetime(2026, 7, 2, 13, 0, 0), role="profiling")
     original_write_text = Path.write_text

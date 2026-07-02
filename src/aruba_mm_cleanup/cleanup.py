@@ -371,6 +371,8 @@ def append_history_records(summary: CleanupRunSummary, *, output_dir: Path, host
     run_at = _safe_timestamp_text(getattr(summary, "started_at", None))
     lines: list[str] = []
     for item in delete_results:
+        if not isinstance(item, DeleteResult):
+            continue
         record = {
             "run_at": run_at,
             "host": host,
@@ -385,6 +387,8 @@ def append_history_records(summary: CleanupRunSummary, *, output_dir: Path, host
             "reappeared": item.status == "reappeared",
         }
         lines.append(json.dumps(record, ensure_ascii=False) + "\n")
+    if not lines:
+        return None
     tmp_path = path.with_name(f"{path.name}.tmp")
     try:
         with tmp_path.open("wb") as tmp_handle:
