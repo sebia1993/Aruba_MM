@@ -172,7 +172,10 @@ def _safe_text(value: Any) -> str:
     try:
         return str(value)
     except Exception:
-        return repr(value)
+        try:
+            return repr(value)
+        except Exception:
+            return ""
 
 
 def _safe_timestamp_text(value: Any) -> str:

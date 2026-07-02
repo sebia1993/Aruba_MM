@@ -837,6 +837,33 @@ def test_audit_summary_tolerates_malformed_internal_items(tmp_path):
     assert audit["delete_results"][1]["verified_absent"] is True
 
 
+def test_audit_summary_tolerates_unprintable_text_values(tmp_path):
+    class BadText:
+        def __str__(self):
+            raise RuntimeError("bad str")
+
+        def __repr__(self):
+            raise RuntimeError("bad repr")
+
+    summary = CleanupRunSummary(started_at=datetime(2026, 7, 2, 13, 0, 0), role=BadText())  # type: ignore[arg-type]
+    summary.query_command = BadText()  # type: ignore[assignment]
+    summary.audit_error = BadText()  # type: ignore[assignment]
+    summary.target_macs = [BadText()]  # type: ignore[list-item]
+    summary.delete_results = [
+        DeleteResult(mac="aa:bb:cc:00:00:01", success=False, command="cmd", error=BadText()),  # type: ignore[arg-type]
+    ]
+
+    path = write_audit_summary(summary, output_dir=tmp_path, host=BadText())  # type: ignore[arg-type]
+
+    audit = json.loads(path.read_text(encoding="utf-8"))
+    assert audit["host"] == ""
+    assert audit["role"] == ""
+    assert audit["query_command"] == ""
+    assert audit["audit_error"] == ""
+    assert audit["target_macs"] == [""]
+    assert audit["delete_results"][0]["error"] == ""
+
+
 def test_summary_writes_tolerate_malformed_started_at(tmp_path):
     class BadStartedAt:
         def isoformat(self, *_args, **_kwargs):
