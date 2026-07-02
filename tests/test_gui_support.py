@@ -524,6 +524,21 @@ def test_manual_run_input_error_dialog_failure_does_not_start_worker(monkeypatch
     assert app.event_queue.empty()
 
 
+def test_manual_run_unprintable_input_error_does_not_start_worker(monkeypatch):
+    app = make_headless_gui()
+    app._read_inputs = lambda: (_ for _ in ()).throw(BadValueErrorText())
+    app._load_history_from_output_dir = lambda *_args, **_kwargs: None
+    app._set_running = lambda _running: (_ for _ in ()).throw(AssertionError("worker should not start"))
+    errors = []
+    monkeypatch.setattr(gui_app_module.messagebox, "showerror", lambda title, message: errors.append((title, message)))
+
+    ArubaMmCleanupGui.start_manual_run(app)
+
+    assert errors == [("입력 오류", "BadValueErrorText")]
+    assert app.is_running is False
+    assert app.event_queue.empty()
+
+
 def test_scheduler_input_error_dialog_failure_does_not_start_scheduler(monkeypatch):
     app = make_headless_gui()
     app._read_inputs = lambda: (_ for _ in ()).throw(ValueError("bad input"))
@@ -537,6 +552,21 @@ def test_scheduler_input_error_dialog_failure_does_not_start_scheduler(monkeypat
 
     ArubaMmCleanupGui.start_scheduler(app)
 
+    assert app.scheduler_running is False
+    assert app.event_queue.empty()
+
+
+def test_scheduler_unprintable_input_error_does_not_start_scheduler(monkeypatch):
+    app = make_headless_gui()
+    app._read_inputs = lambda: (_ for _ in ()).throw(BadValueErrorText())
+    app._load_history_from_output_dir = lambda *_args, **_kwargs: None
+    app._set_running = lambda _running: (_ for _ in ()).throw(AssertionError("scheduler should not start"))
+    errors = []
+    monkeypatch.setattr(gui_app_module.messagebox, "showerror", lambda title, message: errors.append((title, message)))
+
+    ArubaMmCleanupGui.start_scheduler(app)
+
+    assert errors == [("입력 오류", "BadValueErrorText")]
     assert app.scheduler_running is False
     assert app.event_queue.empty()
 
