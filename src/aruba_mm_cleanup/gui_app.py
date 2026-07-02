@@ -1508,7 +1508,10 @@ def _unique_display_macs(macs: list[str]) -> list[str]:
     for mac in macs:
         if not isinstance(mac, str):
             continue
-        normalized = normalize_mac(mac) or mac.strip().casefold()
+        try:
+            normalized = normalize_mac(mac) or mac.strip().casefold()
+        except Exception:
+            continue
         if not normalized or normalized in seen:
             continue
         seen.add(normalized)

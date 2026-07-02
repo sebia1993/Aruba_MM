@@ -624,6 +624,26 @@ def test_query_done_ignores_non_string_mac_items_without_table_rows():
     assert app.table.get_children() == ("aa:bb:cc:00:00:02",)
 
 
+def test_query_done_skips_bad_mac_text_without_stopping_table_update():
+    class BadMac(str):
+        def strip(self, *_args, **_kwargs):
+            raise RuntimeError("bad strip")
+
+    app = make_headless_gui()
+    app.table = FakeTreeTable()
+
+    app._handle_progress(
+        "query_done",
+        {
+            "count": 2,
+            "macs": [BadMac("aa:bb:cc:00:00:01"), "aa:bb:cc:00:00:02"],
+        },
+    )
+
+    assert app.counter_vars["queried"].get() == "8"
+    assert app.table.get_children() == ("aa:bb:cc:00:00:02",)
+
+
 def test_query_done_marks_type_na_rows_and_logs_admin_guidance():
     app = make_headless_gui()
     app.table = FakeTreeTable()
