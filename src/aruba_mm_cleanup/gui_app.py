@@ -897,7 +897,10 @@ class ArubaMmCleanupGui(tk.Tk):
             for mac in _unique_display_macs(type_na_macs):
                 self._log(f"TYPE N/A: {mac} - 관리자 직접 장비 지정 필요")
         elif event == "countdown":
-            remaining = int(payload.get("remaining", 0))
+            try:
+                remaining = int(payload.get("remaining", 0))
+            except TypeError:
+                remaining = 0
             self._set_timer(f"{remaining}s", "삭제 시작 대기" if remaining > 0 else "삭제 시작")
             try:
                 self.status_var.set(f"{remaining}초 후 삭제 시작" if remaining > 0 else "삭제 시작")
