@@ -28,10 +28,11 @@ def main(argv: Optional[list[str]] = None) -> int:
     username = args.username.strip()
     if not username:
         parser.error("--username must not be empty")
+    role = args.role.strip() or "profiling"
     if args.port < 1 or args.port > 65535:
         parser.error("--port must be between 1 and 65535")
     try:
-        build_query_command(args.role)
+        build_query_command(role)
     except ValueError as exc:
         parser.error(str(exc))
 
@@ -59,7 +60,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         port=args.port,
         enable_password=args.enable_password,
     )
-    settings = CleanupSettings(role=args.role, timeout=max(5, args.timeout), delete_delay_seconds=max(0, args.delay))
+    settings = CleanupSettings(role=role, timeout=max(5, args.timeout), delete_delay_seconds=max(0, args.delay))
     runner = MmCleanupRunner()
 
     def progress(event: str, payload: dict[str, object]) -> None:
