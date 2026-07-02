@@ -9,7 +9,14 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable, Optional
 
-from .models import CleanupRunSummary, CleanupSettings, DeleteResult, MmConnectionConfig, QueryResult
+from .models import (
+    CleanupRunSummary,
+    CleanupSettings,
+    DeleteResult,
+    MmConnectionConfig,
+    QueryResult,
+    _safe_timestamp_text,
+)
 from .parser import normalize_mac, parse_global_user_table_explained
 from .session import ConnectionFactory, MmSession
 
@@ -332,7 +339,7 @@ class MmCleanupRunner:
 
 
 def write_audit_summary(summary: CleanupRunSummary, *, output_dir: Path, host: str) -> Path:
-    run_dir = output_dir / summary.started_at.strftime("%Y%m%d_%H%M%S_%f")
+    run_dir = output_dir / _summary_run_dir_name(summary)
     run_dir.mkdir(parents=True, exist_ok=True)
     path = run_dir / "cleanup_summary.json"
     tmp_path = path.with_name(f"{path.name}.tmp")
@@ -358,10 +365,11 @@ def append_history_records(summary: CleanupRunSummary, *, output_dir: Path, host
         return None
     output_dir.mkdir(parents=True, exist_ok=True)
     path = output_dir / HISTORY_FILE_NAME
+    run_at = _safe_timestamp_text(getattr(summary, "started_at", None))
     lines: list[str] = []
     for item in summary.delete_results:
         record = {
-            "run_at": summary.started_at.isoformat(timespec="seconds"),
+            "run_at": run_at,
             "host": host,
             "role": summary.role,
             "mac": item.mac,
@@ -391,6 +399,19 @@ def append_history_records(summary: CleanupRunSummary, *, output_dir: Path, host
             pass
         raise
     return path
+
+
+def _summary_run_dir_name(summary: CleanupRunSummary) -> str:
+    started_at = getattr(summary, "started_at", None)
+    try:
+        return started_at.strftime("%Y%m%d_%H%M%S_%f")
+    except Exception:
+        return _safe_path_fragment(_safe_timestamp_text(started_at))
+
+
+def _safe_path_fragment(value: str) -> str:
+    text = "".join(char if char.isalnum() or char in {"-", "_", "."} else "_" for char in value.strip())
+    return text[:80] or "unknown-started-at"
 
 
 def classify_delete_response(output: str) -> tuple[str, str]:

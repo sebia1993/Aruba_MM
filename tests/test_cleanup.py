@@ -815,6 +815,33 @@ def test_audit_summary_tolerates_malformed_internal_items(tmp_path):
     assert audit["delete_results"][1]["verified_absent"] is True
 
 
+def test_summary_writes_tolerate_malformed_started_at(tmp_path):
+    class BadStartedAt:
+        def isoformat(self, *_args, **_kwargs):
+            raise TypeError("bad isoformat")
+
+        def strftime(self, _format):
+            raise TypeError("bad strftime")
+
+        def __str__(self):
+            return "bad-started-at"
+
+    summary = CleanupRunSummary(started_at=datetime(2026, 7, 2, 13, 0, 0), role="profiling")
+    summary.started_at = BadStartedAt()  # type: ignore[assignment]
+    summary.delete_results = [
+        DeleteResult(mac="aa:bb:cc:00:00:01", success=True, command="cmd"),
+    ]
+
+    audit_path = write_audit_summary(summary, output_dir=tmp_path, host="192.0.2.10")
+    history_path = append_history_records(summary, output_dir=tmp_path, host="192.0.2.10")
+
+    audit = json.loads(audit_path.read_text(encoding="utf-8"))
+    history = [json.loads(line) for line in history_path.read_text(encoding="utf-8").splitlines()]
+    assert audit_path.parent.name == "bad-started-at"
+    assert audit["started_at"] == "bad-started-at"
+    assert history[-1]["run_at"] == "bad-started-at"
+
+
 def test_audit_summary_write_failure_does_not_leave_partial_final_file(tmp_path, monkeypatch):
     summary = CleanupRunSummary(started_at=datetime(2026, 7, 2, 13, 0, 0), role="profiling")
     original_write_text = Path.write_text

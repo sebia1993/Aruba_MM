@@ -100,7 +100,7 @@ class CleanupRunSummary:
 
     def as_audit_dict(self, *, host: str) -> dict[str, Any]:
         return {
-            "started_at": self.started_at.isoformat(timespec="seconds"),
+            "started_at": _safe_timestamp_text(self.started_at),
             "host": host,
             "role": self.role,
             "query_command": self.query_command,
@@ -163,6 +163,18 @@ def _safe_text(value: Any) -> str:
         return str(value)
     except Exception:
         return repr(value)
+
+
+def _safe_timestamp_text(value: Any) -> str:
+    try:
+        return value.isoformat(timespec="seconds")
+    except TypeError:
+        try:
+            return value.isoformat()
+        except Exception:
+            return _safe_text(value)
+    except Exception:
+        return _safe_text(value)
 
 
 def _safe_int(value: Any) -> int:
