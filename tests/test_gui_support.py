@@ -1083,6 +1083,31 @@ def test_history_read_keeps_only_recent_jsonl_records(tmp_path):
     assert loaded[-1]["mac"] == "aa:bb:cc:00:01:f6"
 
 
+def test_history_row_display_handles_bad_record_value_conversion():
+    class BadText:
+        def __str__(self):
+            raise RuntimeError("bad text")
+
+    class BadBool:
+        def __bool__(self):
+            raise RuntimeError("bad bool")
+
+    app = make_headless_gui()
+
+    result, error, tags = ArubaMmCleanupGui._history_row_display(
+        app,
+        {
+            "status": BadText(),
+            "result": BadBool(),
+            "error": BadText(),
+            "success": BadBool(),
+            "reappeared": BadBool(),
+        },
+    )
+
+    assert (result, error, tags) == ("삭제 실패", "", ())
+
+
 def test_clear_history_ignores_destroyed_history_table():
     app = make_headless_gui()
     app.history_table = DestroyedHistoryTable()

@@ -1360,17 +1360,31 @@ class ArubaMmCleanupGui(tk.Tk):
         return list(records)
 
     def _history_row_display(self, record: dict[str, object]) -> tuple[str, str, tuple[str, ...]]:
-        status = str(record.get("status") or "")
-        result = str(record.get("result") or "")
-        error = str(record.get("error") or "")
-        reappeared = bool(record.get("reappeared")) or status == "reappeared"
+        def safe_text(value: object) -> str:
+            try:
+                if not value:
+                    return ""
+                return str(value)
+            except Exception:
+                return ""
+
+        def safe_bool(value: object) -> bool:
+            try:
+                return bool(value)
+            except Exception:
+                return False
+
+        status = safe_text(record.get("status"))
+        result = safe_text(record.get("result"))
+        error = safe_text(record.get("error"))
+        reappeared = safe_bool(record.get("reappeared")) or status == "reappeared"
         if reappeared:
             return "재조회됨", error or "삭제 성공 후 검증 조회에서 다시 발견", ("reappeared",)
         if result:
             return result, error, ()
         if status == "unknown":
             return "확인 필요", error, ()
-        if bool(record.get("success")):
+        if safe_bool(record.get("success")):
             return "삭제 완료", error, ()
         return "삭제 실패", error, ()
 
