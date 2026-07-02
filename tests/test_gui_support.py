@@ -365,6 +365,20 @@ def test_enqueue_event_drops_worker_events_after_closing():
     assert app.event_queue.empty()
 
 
+def test_drain_events_logs_bad_event_and_continues():
+    app = make_headless_gui()
+    app.event_queue.put(("progress", ("countdown", {"remaining": "bad"})))
+    app.event_queue.put(("scheduler_stopped", None))
+
+    ArubaMmCleanupGui._drain_events(app)
+
+    assert any("이벤트 처리 실패(progress)" in message for message in app.logs)
+    assert app.scheduler_running is False
+    assert app.stop_schedule_button.config["state"] == "disabled"
+    assert app.timers[-1] == ("-", "대기")
+    assert app.scheduled_callbacks[-1][0] == 150
+
+
 def test_on_close_sets_flags_and_schedules_bounded_destroy_without_direct_close():
     app = make_headless_gui()
     app._drain_after_id = "drain-id"

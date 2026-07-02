@@ -742,22 +742,28 @@ class ArubaMmCleanupGui(tk.Tk):
         try:
             while True:
                 event, payload = self.event_queue.get_nowait()
-                if event == "running":
-                    self._set_running(bool(payload))
-                elif event == "progress":
-                    progress_event, progress_payload = payload
-                    self._handle_progress(str(progress_event), progress_payload)
-                elif event == "summary":
-                    self._handle_summary(payload)
-                elif event == "next_run":
-                    self._set_timer(f"{payload}s", "다음 실행")
-                elif event == "scheduler_stopped":
-                    self.scheduler_running = False
-                    self.manual_button.configure(state="disabled" if self.is_running else "normal")
-                    self.schedule_button.configure(state="disabled" if self.is_running else "normal")
-                    self.stop_schedule_button.configure(state="disabled")
-                    self._set_timer("-", "대기")
-                    self._sync_settings_visibility()
+                try:
+                    if event == "running":
+                        self._set_running(bool(payload))
+                    elif event == "progress":
+                        progress_event, progress_payload = payload
+                        self._handle_progress(str(progress_event), progress_payload)
+                    elif event == "summary":
+                        self._handle_summary(payload)
+                    elif event == "next_run":
+                        self._set_timer(f"{payload}s", "다음 실행")
+                    elif event == "scheduler_stopped":
+                        self.scheduler_running = False
+                        self.manual_button.configure(state="disabled" if self.is_running else "normal")
+                        self.schedule_button.configure(state="disabled" if self.is_running else "normal")
+                        self.stop_schedule_button.configure(state="disabled")
+                        self._set_timer("-", "대기")
+                        self._sync_settings_visibility()
+                except Exception as exc:
+                    try:
+                        self._log(f"WARNING: 이벤트 처리 실패({event}) - {exc}")
+                    except Exception:
+                        pass
         except queue.Empty:
             pass
         if not self.closing:
