@@ -1186,10 +1186,22 @@ class ArubaMmCleanupGui(tk.Tk):
             return
 
     def _append_history_rows(self, summary) -> None:
-        delete_results = getattr(summary, "delete_results", None)
+        def safe_get(obj: object, name: str, default: object) -> object:
+            try:
+                return getattr(obj, name, default)
+            except Exception:
+                return default
+
+        def safe_bool(value: object) -> bool:
+            try:
+                return bool(value)
+            except Exception:
+                return False
+
+        delete_results = safe_get(summary, "delete_results", None)
         if not isinstance(delete_results, (list, tuple)) or not delete_results:
             return
-        started_at = getattr(summary, "started_at", None)
+        started_at = safe_get(summary, "started_at", None)
         try:
             run_at = (
                 started_at.strftime("%Y-%m-%d %H:%M:%S")
@@ -1198,24 +1210,27 @@ class ArubaMmCleanupGui(tk.Tk):
             )
         except Exception:
             run_at = ""
-        raw_reappeared_macs = getattr(summary, "reappeared_macs", []) or []
+        raw_reappeared_macs = safe_get(summary, "reappeared_macs", [])
+        if raw_reappeared_macs is None:
+            raw_reappeared_macs = []
         reappeared_macs = (
             set(_unique_display_macs([mac for mac in raw_reappeared_macs if isinstance(mac, str)]))
             if isinstance(raw_reappeared_macs, (list, tuple, set))
             else set()
         )
         for item in delete_results:
-            mac = getattr(item, "mac", "")
+            mac = safe_get(item, "mac", "")
             if not isinstance(mac, str) or not mac:
                 continue
+            status = safe_get(item, "status", "")
             result, error, tags = self._history_row_display(
                 {
                     "mac": mac,
                     "result": "",
-                    "status": getattr(item, "status", ""),
-                    "success": bool(getattr(item, "success", False)),
-                    "error": getattr(item, "error", ""),
-                    "reappeared": mac in reappeared_macs or getattr(item, "status", "") == "reappeared",
+                    "status": status,
+                    "success": safe_bool(safe_get(item, "success", False)),
+                    "error": safe_get(item, "error", ""),
+                    "reappeared": mac in reappeared_macs or status == "reappeared",
                 }
             )
             self._insert_history_row(run_at, mac, result, error, tags=tags)

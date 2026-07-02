@@ -1461,6 +1461,97 @@ def test_append_history_rows_handles_started_at_format_failure():
     )
 
 
+def test_append_history_rows_handles_failing_summary_attribute_access():
+    class FailingSummary:
+        delete_results = [
+            SimpleNamespace(
+                mac="aa:bb:cc:00:00:01",
+                status="verified_deleted",
+                success=True,
+                error="",
+            )
+        ]
+
+        @property
+        def started_at(self):
+            raise RuntimeError("bad started_at")
+
+        @property
+        def reappeared_macs(self):
+            raise RuntimeError("bad reappeared_macs")
+
+    app = make_headless_gui()
+    app.history_table = FakeHistoryTable()
+    app.history_row_counter = 0
+
+    ArubaMmCleanupGui._append_history_rows(app, FailingSummary())
+
+    row_id = app.history_table.get_children()[0]
+    assert app.history_table.rows[row_id]["values"] == (
+        "",
+        "aa:bb:cc:00:00:01",
+        "삭제 완료",
+        "",
+    )
+
+
+def test_append_history_rows_skips_failing_delete_result_fields():
+    class FailingMacResult:
+        @property
+        def mac(self):
+            raise RuntimeError("bad mac")
+
+    class FailingStatusResult:
+        mac = "aa:bb:cc:00:00:02"
+
+        @property
+        def status(self):
+            raise RuntimeError("bad status")
+
+        @property
+        def success(self):
+            raise RuntimeError("bad success")
+
+        @property
+        def error(self):
+            raise RuntimeError("bad error")
+
+    class BadBool:
+        def __bool__(self):
+            raise RuntimeError("bad bool")
+
+    class FailingSuccessBoolResult:
+        mac = "aa:bb:cc:00:00:03"
+        status = ""
+        success = BadBool()
+        error = ""
+
+    app = make_headless_gui()
+    app.history_table = FakeHistoryTable()
+    app.history_row_counter = 0
+    summary = SimpleNamespace(
+        started_at=datetime(2026, 7, 2, 13, 0, 0),
+        reappeared_macs=[],
+        delete_results=[FailingMacResult(), FailingStatusResult(), FailingSuccessBoolResult()],
+    )
+
+    ArubaMmCleanupGui._append_history_rows(app, summary)
+
+    assert app.history_table.get_children() == ("history-0", "history-1")
+    assert app.history_table.rows["history-0"]["values"] == (
+        "2026-07-02 13:00:00",
+        "aa:bb:cc:00:00:02",
+        "삭제 실패",
+        "",
+    )
+    assert app.history_table.rows["history-1"]["values"] == (
+        "2026-07-02 13:00:00",
+        "aa:bb:cc:00:00:03",
+        "삭제 실패",
+        "",
+    )
+
+
 def test_summary_updates_simple_dashboard_cards_with_final_values():
     app = make_headless_gui()
     summary = SimpleNamespace(
