@@ -689,15 +689,19 @@ class ArubaMmCleanupGui(tk.Tk):
         def progress(event: str, payload: dict[str, object]) -> None:
             self._enqueue_event("progress", (event, payload))
 
-        with self.runner_lock:
-            summary = self.runner.run_once(
-                config,
-                settings,
-                output_dir=output_dir,
-                progress_callback=progress,
-                should_cancel=self._should_cancel_run,
-            )
-        self._enqueue_event("summary", summary)
+        try:
+            with self.runner_lock:
+                summary = self.runner.run_once(
+                    config,
+                    settings,
+                    output_dir=output_dir,
+                    progress_callback=progress,
+                    should_cancel=self._should_cancel_run,
+                )
+            self._enqueue_event("summary", summary)
+        except Exception as exc:
+            error = _safe_text(exc) or exc.__class__.__name__
+            self._enqueue_event("progress", ("run_error", {"error": error}))
 
     def _close_runner_session(self, *, reason: str, enqueue_progress: bool) -> None:
         progress = None

@@ -1081,6 +1081,50 @@ def test_drain_events_ignores_reschedule_failure():
     assert app._drain_after_id is None
 
 
+def test_run_once_worker_reports_unexpected_runner_failure_and_resets_running():
+    app = make_headless_gui()
+    app.runner_lock = threading.Lock()
+    app.runner = SimpleNamespace(
+        run_once=lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("runner failed"))
+    )
+
+    ArubaMmCleanupGui._run_once_worker(app, object(), object(), Path("outputs"))
+
+    assert app.event_queue.get_nowait() == ("progress", ("run_error", {"error": "runner failed"}))
+    assert app.event_queue.get_nowait() == ("running", False)
+    assert app.event_queue.empty()
+
+
+def test_run_summary_reports_unprintable_unexpected_runner_failure():
+    app = make_headless_gui()
+    app.runner_lock = threading.Lock()
+    app.runner = SimpleNamespace(run_once=lambda *_args, **_kwargs: (_ for _ in ()).throw(BadErrorText()))
+
+    ArubaMmCleanupGui._run_summary(app, object(), object(), Path("outputs"))
+
+    assert app.event_queue.get_nowait() == ("progress", ("run_error", {"error": "BadErrorText"}))
+    assert app.event_queue.empty()
+
+
+def test_scheduler_loop_reports_unexpected_runner_failure_and_stops_cleanly():
+    app = make_headless_gui()
+    app.runner_lock = threading.Lock()
+
+    def fail_and_stop(*_args, **_kwargs):
+        app.scheduler_stop_event.set()
+        raise RuntimeError("runner failed")
+
+    app.runner = SimpleNamespace(run_once=fail_and_stop)
+
+    ArubaMmCleanupGui._scheduler_loop(app, object(), object(), Path("outputs"), 1)
+
+    assert app.event_queue.get_nowait() == ("running", True)
+    assert app.event_queue.get_nowait() == ("progress", ("run_error", {"error": "runner failed"}))
+    assert app.event_queue.get_nowait() == ("running", False)
+    assert app.event_queue.get_nowait() == ("scheduler_stopped", None)
+    assert app.event_queue.empty()
+
+
 def test_on_close_sets_flags_and_schedules_bounded_destroy_without_direct_close():
     app = make_headless_gui()
     app._drain_after_id = "drain-id"
