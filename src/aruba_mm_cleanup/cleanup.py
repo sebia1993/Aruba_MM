@@ -493,6 +493,8 @@ def _has_control_character(value: str) -> bool:
 
 
 def _unique_macs(macs: list[str]) -> list[str]:
+    if not isinstance(macs, (list, tuple, set)):
+        return []
     seen: set[str] = set()
     unique: list[str] = []
     for mac in macs:
