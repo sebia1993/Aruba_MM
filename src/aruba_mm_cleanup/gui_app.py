@@ -1320,6 +1320,12 @@ class ArubaMmCleanupGui(tk.Tk):
             self._insert_history_row(run_at, mac, result, error, tags=tags)
 
     def _read_history_records(self, output_dir: Path) -> list[dict[str, object]]:
+        def safe_text(value: object) -> str:
+            try:
+                return str(value)
+            except Exception:
+                return ""
+
         jsonl_path = output_dir / HISTORY_FILE_NAME
         if jsonl_path.exists():
             records: deque[dict[str, object]] = deque(maxlen=MAX_HISTORY_ROWS)
@@ -1347,7 +1353,7 @@ class ArubaMmCleanupGui(tk.Tk):
                 continue
             if not isinstance(audit, dict):
                 continue
-            run_at = str(audit.get("started_at", ""))
+            run_at = safe_text(audit.get("started_at", ""))
             reappeared_macs = audit.get("reappeared_macs") or []
             if not isinstance(reappeared_macs, (list, tuple, set)):
                 reappeared_macs = []

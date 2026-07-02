@@ -1265,6 +1265,44 @@ def test_history_load_ignores_non_object_audit_fallback(tmp_path):
     assert app.history_table.get_children() == ()
 
 
+def test_history_read_audit_fallback_handles_unprintable_started_at(tmp_path, monkeypatch):
+    class BadText:
+        def __str__(self):
+            raise RuntimeError("bad started_at")
+
+    output_dir = tmp_path / "outputs"
+    run_dir = output_dir / "20260702_130000_000000"
+    run_dir.mkdir(parents=True)
+    (run_dir / "cleanup_summary.json").write_text("bad audit payload", encoding="utf-8")
+
+    def fake_loads(_payload):
+        return {
+            "started_at": BadText(),
+            "delete_results": [
+                {
+                    "mac": "aa:bb:cc:00:00:01",
+                    "status": "verified_deleted",
+                    "success": True,
+                }
+            ],
+        }
+
+    monkeypatch.setattr(gui_app_module.json, "loads", fake_loads)
+    app = make_headless_gui()
+
+    loaded = app._read_history_records(output_dir)
+
+    assert loaded == [
+        {
+            "mac": "aa:bb:cc:00:00:01",
+            "status": "verified_deleted",
+            "success": True,
+            "run_at": "",
+            "reappeared": False,
+        }
+    ]
+
+
 def test_history_load_ignores_invalid_reappeared_macs_type(tmp_path):
     output_dir = tmp_path / "outputs"
     run_dir = output_dir / "20260702_130000_000000"
