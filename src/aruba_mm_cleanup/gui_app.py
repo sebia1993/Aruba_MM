@@ -760,13 +760,13 @@ class ArubaMmCleanupGui(tk.Tk):
             raise ValueError("암호를 입력하세요.")
         try:
             port = int(port_text)
-        except ValueError as exc:
+        except (TypeError, ValueError, OverflowError) as exc:
             raise ValueError("Port는 숫자로 입력하세요.") from exc
         if port < 1 or port > 65535:
             raise ValueError("Port는 1부터 65535 사이 숫자로 입력하세요.")
         try:
             timeout = max(5, int(timeout_text))
-        except ValueError as exc:
+        except (TypeError, ValueError, OverflowError) as exc:
             raise ValueError("장비 응답 대기(초)는 숫자로 입력하세요.") from exc
         try:
             build_query_command(role)
@@ -792,7 +792,7 @@ class ArubaMmCleanupGui(tk.Tk):
             interval = int(self.interval_var.get().strip() or str(DEFAULT_INTERVAL_SECONDS))
         except (AttributeError, tk.TclError) as exc:
             raise ValueError("주기(초)는 1 이상 숫자로 입력하세요.") from exc
-        except ValueError as exc:
+        except (TypeError, ValueError, OverflowError) as exc:
             raise ValueError("주기(초)는 1 이상 숫자로 입력하세요.") from exc
         if interval < MIN_INTERVAL_SECONDS:
             raise ValueError("주기(초)는 1 이상 숫자로 입력하세요.")

@@ -434,6 +434,26 @@ def test_read_inputs_reports_malformed_text_variables(field_name):
         ArubaMmCleanupGui._read_inputs(app)
 
 
+@pytest.mark.parametrize(
+    ("field_name", "message"),
+    [
+        ("port_var", "Port"),
+        ("timeout_var", "장비 응답 대기"),
+    ],
+)
+@pytest.mark.parametrize("bad_number", [object(), float("inf")])
+def test_read_inputs_reports_malformed_numeric_variables(field_name, message, bad_number):
+    class BadNumericText:
+        def strip(self):
+            return bad_number
+
+    app = make_input_gui()
+    setattr(app, field_name, FakeVar(BadNumericText()))
+
+    with pytest.raises(ValueError, match=message):
+        ArubaMmCleanupGui._read_inputs(app)
+
+
 def test_read_interval_uses_actual_input_value():
     app = make_input_gui()
     app.interval_var.set("1")
@@ -461,6 +481,19 @@ def test_read_interval_reports_destroyed_interval_variable():
 def test_read_interval_reports_malformed_interval_variable():
     app = make_input_gui()
     app.interval_var = FakeVar(None)
+
+    with pytest.raises(ValueError, match="주기\\(초\\)"):
+        ArubaMmCleanupGui._read_interval(app)
+
+
+@pytest.mark.parametrize("bad_number", [object(), float("inf")])
+def test_read_interval_reports_malformed_numeric_variable(bad_number):
+    class BadNumericText:
+        def strip(self):
+            return bad_number
+
+    app = make_input_gui()
+    app.interval_var = FakeVar(BadNumericText())
 
     with pytest.raises(ValueError, match="주기\\(초\\)"):
         ArubaMmCleanupGui._read_interval(app)
