@@ -757,6 +757,30 @@ def test_set_row_status_ignores_malformed_table_row_values():
     assert app.table.rows["aa:bb:cc:00:00:01"]["values"] == ("aa:bb:cc:00:00:01",)
 
 
+def test_set_row_status_handles_unprintable_existing_message():
+    class BadMessage:
+        def __bool__(self):
+            raise RuntimeError("bad bool")
+
+        def __str__(self):
+            raise RuntimeError("bad message")
+
+    app = make_headless_gui()
+    app.table = FakeTreeTable()
+    app.table.insert(
+        "",
+        "end",
+        iid="aa:bb:cc:00:00:01",
+        values=("aa:bb:cc:00:00:01", "삭제 대상", "2026-07-02 13:00:00", "", BadMessage()),
+    )
+
+    ArubaMmCleanupGui._set_row_status(app, "aa:bb:cc:00:00:01", "확인 필요", "timeout")
+
+    values = app.table.rows["aa:bb:cc:00:00:01"]["values"]
+    assert values[1] == "확인 필요"
+    assert values[4] == "timeout"
+
+
 def test_set_all_pending_status_skips_malformed_rows_and_updates_valid_rows():
     app = make_headless_gui()
     app.table = FakeTreeTable()

@@ -1062,7 +1062,11 @@ class ArubaMmCleanupGui(tk.Tk):
         values[1] = status
         if status in {"삭제 완료", "삭제 실패", "확인 필요", "재조회됨"}:
             values[3] = time.strftime("%Y-%m-%d %H:%M:%S")
-        values[4] = _merge_status_message(str(values[4] or ""), error)
+        try:
+            existing_message = str(values[4] or "")
+        except Exception:
+            existing_message = ""
+        values[4] = _merge_status_message(existing_message, error)
         try:
             self.table.item(mac, values=values)
             self.table.item(mac, tags=("reappeared",) if status == "재조회됨" else ())
