@@ -599,6 +599,30 @@ def test_manual_run_unprintable_input_error_does_not_start_worker(monkeypatch):
     assert app.event_queue.empty()
 
 
+def test_manual_run_thread_start_failure_resets_running_state(monkeypatch):
+    class FailingThread:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def start(self):
+            raise RuntimeError("thread start failed")
+
+    app = make_headless_gui()
+    app._read_inputs = lambda: (object(), object(), Path("outputs"))
+    app._load_history_from_output_dir = lambda *_args, **_kwargs: None
+    monkeypatch.setattr(gui_app_module.threading, "Thread", FailingThread)
+
+    ArubaMmCleanupGui.start_manual_run(app)
+
+    assert app.is_running is False
+    assert app.worker is None
+    assert app.manual_button.config["state"] == "normal"
+    assert app.schedule_button.config["state"] == "normal"
+    assert app.cancel_button.config["state"] == "disabled"
+    assert app.timers[-1] == ("-", "대기")
+    assert "WARNING: 작업 스레드 시작 실패 - thread start failed" in app.logs
+
+
 def test_scheduler_input_error_dialog_failure_does_not_start_scheduler(monkeypatch):
     app = make_headless_gui()
     app._read_inputs = lambda: (_ for _ in ()).throw(ValueError("bad input"))
@@ -629,6 +653,32 @@ def test_scheduler_unprintable_input_error_does_not_start_scheduler(monkeypatch)
     assert errors == [("입력 오류", "BadValueErrorText")]
     assert app.scheduler_running is False
     assert app.event_queue.empty()
+
+
+def test_scheduler_thread_start_failure_resets_scheduler_state(monkeypatch):
+    class FailingThread:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def start(self):
+            raise RuntimeError("thread start failed")
+
+    app = make_headless_gui()
+    app._read_inputs = lambda: (object(), object(), Path("outputs"))
+    app._read_interval = lambda: 5
+    app._load_history_from_output_dir = lambda *_args, **_kwargs: None
+    monkeypatch.setattr(gui_app_module.threading, "Thread", FailingThread)
+
+    ArubaMmCleanupGui.start_scheduler(app)
+
+    assert app.scheduler_running is False
+    assert app.scheduler_worker is None
+    assert app.scheduler_stop_event.is_set()
+    assert app.manual_button.config["state"] == "normal"
+    assert app.schedule_button.config["state"] == "normal"
+    assert app.stop_schedule_button.config["state"] == "disabled"
+    assert app.timers[-1] == ("-", "대기")
+    assert "WARNING: 주기 실행 스레드 시작 실패 - thread start failed" in app.logs
 
 
 def test_delete_progress_events_update_rows_without_confirmed_delete_count():

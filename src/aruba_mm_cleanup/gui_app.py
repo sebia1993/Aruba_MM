@@ -555,7 +555,13 @@ class ArubaMmCleanupGui(tk.Tk):
             args=(config, settings, output_dir),
             daemon=True,
         )
-        self.worker.start()
+        try:
+            self.worker.start()
+        except Exception as exc:
+            self.worker = None
+            self._set_running(False)
+            error = _safe_text(exc) or exc.__class__.__name__
+            self._log(f"WARNING: 작업 스레드 시작 실패 - {error}")
 
     def start_scheduler(self) -> None:
         if self.closing or self.scheduler_running:
@@ -594,7 +600,28 @@ class ArubaMmCleanupGui(tk.Tk):
             args=(config, settings, output_dir, interval),
             daemon=True,
         )
-        self.scheduler_worker.start()
+        try:
+            self.scheduler_worker.start()
+        except Exception as exc:
+            self.scheduler_worker = None
+            self.scheduler_running = False
+            self.scheduler_stop_event.set()
+            try:
+                self.manual_button.configure(state="normal")
+            except tk.TclError:
+                pass
+            try:
+                self.schedule_button.configure(state="normal")
+            except tk.TclError:
+                pass
+            try:
+                self.stop_schedule_button.configure(state="disabled")
+            except tk.TclError:
+                pass
+            self._set_timer("-", "대기")
+            self._sync_settings_visibility()
+            error = _safe_text(exc) or exc.__class__.__name__
+            self._log(f"WARNING: 주기 실행 스레드 시작 실패 - {error}")
 
     def stop_scheduler(self) -> None:
         self.scheduler_stop_event.set()
