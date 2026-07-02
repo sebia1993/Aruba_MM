@@ -393,6 +393,38 @@ def test_type_na_message_survives_delete_status_updates():
     assert app.table.rows["aa:bb:cc:00:00:01"]["values"][4] == f"{TYPE_NA_MESSAGE} | timeout"
 
 
+def test_set_row_status_ignores_malformed_table_row_values():
+    app = make_headless_gui()
+    app.table = FakeTreeTable()
+    app.table.insert(
+        "",
+        "end",
+        iid="aa:bb:cc:00:00:01",
+        values=("aa:bb:cc:00:00:01",),
+    )
+
+    ArubaMmCleanupGui._set_row_status(app, "aa:bb:cc:00:00:01", "삭제 완료", "")
+
+    assert app.table.rows["aa:bb:cc:00:00:01"]["values"] == ("aa:bb:cc:00:00:01",)
+
+
+def test_set_all_pending_status_skips_malformed_rows_and_updates_valid_rows():
+    app = make_headless_gui()
+    app.table = FakeTreeTable()
+    app.table.insert("", "end", iid="bad-row", values=("bad-row",))
+    app.table.insert(
+        "",
+        "end",
+        iid="aa:bb:cc:00:00:01",
+        values=("aa:bb:cc:00:00:01", "삭제 대상", "2026-07-02 13:00:00", "", ""),
+    )
+
+    ArubaMmCleanupGui._set_all_pending_status(app, "취소됨")
+
+    assert app.table.rows["bad-row"]["values"] == ("bad-row",)
+    assert app.table.rows["aa:bb:cc:00:00:01"]["values"][1] == "취소됨"
+
+
 def test_running_state_resets_current_run_counters():
     app = make_headless_gui()
 

@@ -903,6 +903,8 @@ class ArubaMmCleanupGui(tk.Tk):
         if not mac or not self.table.exists(mac):
             return
         values = list(self.table.item(mac, "values"))
+        if len(values) < 5:
+            return
         values[1] = status
         if status in {"삭제 완료", "삭제 실패", "확인 필요", "재조회됨"}:
             values[3] = time.strftime("%Y-%m-%d %H:%M:%S")
@@ -922,6 +924,8 @@ class ArubaMmCleanupGui(tk.Tk):
     def _set_all_pending_status(self, status: str) -> None:
         for item_id in self.table.get_children():
             values = list(self.table.item(item_id, "values"))
+            if len(values) < 2:
+                continue
             if values[1] in {"삭제 대상", "삭제 중"}:
                 values[1] = status
                 self.table.item(item_id, values=values)
