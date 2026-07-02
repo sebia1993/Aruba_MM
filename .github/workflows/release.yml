@@ -89,20 +89,13 @@ jobs:
           $assetPath = Join-Path $assetDir $assetName
           Copy-Item -LiteralPath $sourceZip.FullName -Destination $assetPath -Force
 
-          $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $assetPath).Hash.ToLowerInvariant()
-          $checksumPath = "$assetPath.sha256"
-          "$hash  $assetName" | Set-Content -LiteralPath $checksumPath -Encoding ASCII
-
           "asset_path=$assetPath" >> $env:GITHUB_OUTPUT
-          "checksum_path=$checksumPath" >> $env:GITHUB_OUTPUT
-          "checksum=$hash" >> $env:GITHUB_OUTPUT
 
       - name: Verify release assets
         shell: pwsh
         run: |
           python .\tools\verify_release_package.py `
             --zip "${{ steps.assets.outputs.asset_path }}" `
-            --sha256 "${{ steps.assets.outputs.checksum_path }}" `
             --smoke-cli
 
       - name: Create Korean release notes
@@ -111,7 +104,6 @@ jobs:
         run: |
           $tag = "${{ steps.metadata.outputs.tag }}"
           $assetName = "${{ steps.metadata.outputs.asset_name }}"
-          $checksum = "${{ steps.assets.outputs.checksum }}"
           $sha = "${{ github.sha }}"
           $branch = "${{ github.ref_name }}"
           $before = "${{ github.event.before }}"
@@ -169,9 +161,7 @@ jobs:
 
           ## 첨부파일
           - 산출물 파일명: $assetName
-          - SHA256 파일명: $assetName.sha256
-          - SHA256 체크섬: $checksum
-          - 사용 방법: ZIP 파일과 .sha256 파일을 함께 다운로드해서 무결성을 확인한 뒤, Windows 11 PC에서 ZIP 압축을 풀고 ArubaMMCleanupGUI.exe를 실행하세요.
+          - 사용 방법: ZIP 파일을 다운로드한 뒤, Windows 11 PC에서 압축을 풀고 ArubaMMCleanupGUI.exe를 실행하세요.
 
           <details>
           <summary>세부 커밋 및 변경 파일</summary>
@@ -202,7 +192,6 @@ jobs:
         run: |
           gh release create "${{ steps.metadata.outputs.tag }}" `
             "${{ steps.assets.outputs.asset_path }}#${{ steps.metadata.outputs.asset_name }}" `
-            "${{ steps.assets.outputs.checksum_path }}#${{ steps.metadata.outputs.asset_name }}.sha256" `
             --repo "${{ github.repository }}" `
             --title "aruba-mm-cleanup ${{ steps.metadata.outputs.tag }}" `
             --notes-file "${{ steps.notes.outputs.notes_path }}" `
@@ -228,4 +217,3 @@ jobs:
           $tag = "${{ steps.metadata.outputs.tag }}"
           gh release delete "$tag" --repo "${{ github.repository }}" --yes --cleanup-tag
           git push origin ":refs/tags/$tag"
-

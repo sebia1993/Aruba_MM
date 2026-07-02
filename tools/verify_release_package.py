@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import platform
 import subprocess
 import tempfile
@@ -25,7 +24,6 @@ def main(argv: Optional[list[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="Validate an Aruba MM Cleanup Windows release ZIP.")
     parser.add_argument("--zip", dest="zip_path", type=Path, help="release ZIP path")
     parser.add_argument("--dist", type=Path, default=Path("dist"), help="directory containing a release ZIP")
-    parser.add_argument("--sha256", type=Path, help="SHA256 sidecar file to verify")
     parser.add_argument("--smoke-cli", action="store_true", help="run ArubaMMCleanupCLI.exe --help on Windows")
     parser.add_argument(
         "--require-cli-smoke",
@@ -45,8 +43,6 @@ def main(argv: Optional[list[str]] = None) -> int:
     if missing:
         raise SystemExit("Release ZIP is missing required files:\n" + "\n".join(f"- {item}" for item in missing))
 
-    if args.sha256:
-        _verify_sha256(zip_path, args.sha256)
     if args.smoke_cli:
         _smoke_cli_help(zip_path, require=args.require_cli_smoke)
     print(f"Verified release package: {zip_path}")
@@ -69,23 +65,6 @@ def _read_zip_names(zip_path: Path) -> set[str]:
             return {name.replace("\\", "/").rstrip("/") for name in archive.namelist()}
     except zipfile.BadZipFile as exc:
         raise SystemExit(f"Release ZIP is not a valid ZIP file: {zip_path}") from exc
-
-
-def _verify_sha256(zip_path: Path, checksum_path: Path) -> None:
-    if not checksum_path.exists():
-        raise SystemExit(f"SHA256 file does not exist: {checksum_path}")
-    parts = checksum_path.read_text(encoding="ascii").strip().split()
-    if len(parts) < 2:
-        raise SystemExit(f"SHA256 file must contain '<hash>  <filename>': {checksum_path}")
-    expected_hash = parts[0].lower()
-    expected_name = parts[-1]
-    if len(expected_hash) != 64 or any(char not in "0123456789abcdef" for char in expected_hash):
-        raise SystemExit(f"SHA256 hash is invalid: {expected_hash}")
-    if expected_name != zip_path.name:
-        raise SystemExit(f"SHA256 filename mismatch: expected {zip_path.name}, got {expected_name}")
-    actual_hash = hashlib.sha256(zip_path.read_bytes()).hexdigest()
-    if actual_hash != expected_hash:
-        raise SystemExit(f"SHA256 mismatch for {zip_path.name}: expected {expected_hash}, got {actual_hash}")
 
 
 def _smoke_cli_help(zip_path: Path, *, require: bool) -> None:

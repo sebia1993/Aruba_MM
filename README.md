@@ -4,9 +4,7 @@ Aruba MM Cleanup은 Aruba Mobility Master/MM에서 `profiling` Role 사용자 MA
 
 ## Windows 11 사용 방법
 
-1. GitHub Release에서 아래 두 파일을 다운로드합니다.
-   - `aruba-mm-cleanup_vYYYY.MM.DD-HHMMSS_windows.zip`
-   - `aruba-mm-cleanup_vYYYY.MM.DD-HHMMSS_windows.zip.sha256`
+1. GitHub Release에서 `aruba-mm-cleanup_vYYYY.MM.DD-HHMMSS_windows.zip` 파일을 다운로드합니다.
 2. ZIP 파일 압축을 풉니다.
 3. `ArubaMMCleanupGUI.exe`를 실행합니다.
 4. CLI가 필요하면 같은 폴더의 `ArubaMMCleanupCLI.exe`를 사용합니다.

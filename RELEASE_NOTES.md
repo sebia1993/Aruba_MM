@@ -5,7 +5,6 @@
 ## 배포 파일 형식
 
 - `aruba-mm-cleanup_vYYYY.MM.DD-HHMMSS_windows.zip`
-- `aruba-mm-cleanup_vYYYY.MM.DD-HHMMSS_windows.zip.sha256`
 
 ZIP 포함 파일:
 
@@ -24,4 +23,3 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\validate.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\build_windows_gui_exe.ps1
 python .\tools\verify_release_package.py --dist .\dist --smoke-cli
 ```
-

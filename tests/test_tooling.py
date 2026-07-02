@@ -1,11 +1,10 @@
-import hashlib
 import subprocess
 import sys
 import zipfile
 from pathlib import Path
 
 
-def test_release_zip_verifier_checks_required_files_and_checksum(tmp_path):
+def test_release_zip_verifier_checks_required_files(tmp_path):
     repo_root = Path(__file__).parents[1]
     verifier = repo_root / "tools" / "verify_release_package.py"
     zip_path = tmp_path / "ArubaMMCleanupGUI_v0.1.0.zip"
@@ -19,11 +18,9 @@ def test_release_zip_verifier_checks_required_files_and_checksum(tmp_path):
     with zipfile.ZipFile(zip_path, "w") as archive:
         for name in names:
             archive.writestr(name, "sample")
-    checksum_path = tmp_path / f"{zip_path.name}.sha256"
-    checksum_path.write_text(f"{hashlib.sha256(zip_path.read_bytes()).hexdigest()}  {zip_path.name}", encoding="ascii")
 
     completed = subprocess.run(
-        [sys.executable, str(verifier), "--zip", str(zip_path), "--sha256", str(checksum_path)],
+        [sys.executable, str(verifier), "--zip", str(zip_path)],
         capture_output=True,
         text=True,
         check=False,
@@ -57,6 +54,8 @@ def test_github_actions_release_contract():
     assert "Korea Standard Time" in release_workflow
     assert "yyyy.MM.dd-HHmmss" in release_workflow
     assert 'aruba-mm-cleanup_${candidate}_windows.zip' in release_workflow
-    assert "Get-FileHash -Algorithm SHA256" in release_workflow
+    assert "Get-FileHash -Algorithm SHA256" not in release_workflow
+    assert ".sha256" not in release_workflow
+    assert "--sha256" not in release_workflow
     assert "gh release create" in release_workflow
     assert "--draft=false" in release_workflow
