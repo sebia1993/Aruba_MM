@@ -99,7 +99,11 @@ class MmSession:
                 try:
                     disconnect()
                 except Exception as exc:
-                    self._emit(progress_callback, "warning", message=f"invalid connection cleanup failed: {exc}")
+                    self._emit(
+                        progress_callback,
+                        "warning",
+                        message=f"invalid connection cleanup failed: {_exception_text(exc)}",
+                    )
             raise RuntimeError("MM 연결 객체가 올바르지 않습니다.")
         self._connection = connection
         self._config = config

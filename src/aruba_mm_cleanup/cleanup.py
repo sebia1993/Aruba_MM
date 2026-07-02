@@ -349,13 +349,15 @@ class MmCleanupRunner:
         try:
             summary.audit_path = write_audit_summary(summary, output_dir=output_dir, host=host)
         except Exception as exc:
-            summary.audit_error = str(exc)
-            self._emit(progress_callback, "warning", message=f"audit summary save failed: {exc}")
+            error = _exception_text(exc)
+            summary.audit_error = error
+            self._emit(progress_callback, "warning", message=f"audit summary save failed: {error}")
         try:
             summary.history_path = append_history_records(summary, output_dir=output_dir, host=host)
         except Exception as exc:
-            summary.history_error = str(exc)
-            self._emit(progress_callback, "warning", message=f"deletion history save failed: {exc}")
+            error = _exception_text(exc)
+            summary.history_error = error
+            self._emit(progress_callback, "warning", message=f"deletion history save failed: {error}")
         return summary
 
     @staticmethod

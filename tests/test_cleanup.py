@@ -38,6 +38,14 @@ class FakeConnection:
         self.disconnected = True
 
 
+class BadErrorText(Exception):
+    def __str__(self):
+        raise RuntimeError("bad error text")
+
+    def __repr__(self):
+        raise RuntimeError("bad error repr")
+
+
 class FailingDisconnectConnection(FakeConnection):
     def disconnect(self):
         self.disconnected = True
@@ -45,16 +53,18 @@ class FailingDisconnectConnection(FakeConnection):
 
 
 class UnprintableDisconnectConnection(FakeConnection):
-    class BadErrorText(Exception):
-        def __str__(self):
-            raise RuntimeError("bad error text")
+    def disconnect(self):
+        self.disconnected = True
+        raise BadErrorText()
 
-        def __repr__(self):
-            raise RuntimeError("bad error repr")
+
+class InvalidUnprintableDisconnectConnection:
+    def __init__(self):
+        self.disconnected = False
 
     def disconnect(self):
         self.disconnected = True
-        raise self.BadErrorText()
+        raise BadErrorText()
 
 
 class MissingCommandConnection:
@@ -221,6 +231,31 @@ def test_session_rejects_invalid_connection_object_and_clears_state():
     assert connection.disconnected is True
     assert session.is_connected is False
     assert ("connect_start", {"host": "192.0.2.10"}) in events
+    assert not any(event == "connect_done" for event, _payload in events)
+
+
+def test_session_invalid_connection_unprintable_cleanup_failure_is_reported_and_rejected():
+    connection = InvalidUnprintableDisconnectConnection()
+    events = []
+    session = MmSession(connection_factory=lambda _config, _timeout: connection)  # type: ignore[arg-type]
+    config = MmConnectionConfig(host="192.0.2.10", username="admin", password="secret")
+    settings = CleanupSettings(role="profiling", timeout=5, delete_delay_seconds=0)
+
+    try:
+        session.run_command(
+            config,
+            settings,
+            "show version",
+            progress_callback=lambda event, payload: events.append((event, payload)),
+        )
+    except RuntimeError as exc:
+        assert "MM 연결 객체" in str(exc)
+    else:
+        raise AssertionError("session should reject invalid connection objects")
+
+    assert connection.disconnected is True
+    assert session.is_connected is False
+    assert ("warning", {"message": "invalid connection cleanup failed: BadErrorText"}) in events
     assert not any(event == "connect_done" for event, _payload in events)
 
 
@@ -1406,6 +1441,69 @@ def test_history_append_skips_invalid_delete_result_items(tmp_path):
     assert history[0] == original_record
     assert history[1]["mac"] == "aa:bb:cc:00:00:01"
     assert history[1]["result"] == "삭제 완료"
+
+
+def test_run_once_audit_unprintable_write_failure_keeps_summary(tmp_path, monkeypatch):
+    def failing_write_audit_summary(*_args, **_kwargs):
+        raise BadErrorText()
+
+    monkeypatch.setattr("aruba_mm_cleanup.cleanup.write_audit_summary", failing_write_audit_summary)
+    connection = FakeConnection(
+        responses={
+            "no paging": "",
+            "show global-user-table list role profiling": "",
+        }
+    )
+    events = []
+    runner = MmCleanupRunner(
+        connection_factory=lambda _config, _timeout: connection,
+        sleep_func=lambda _seconds: None,
+    )
+
+    summary = runner.run_once(
+        MmConnectionConfig(host="192.0.2.10", username="admin", password="secret"),
+        CleanupSettings(role="profiling", timeout=5, delete_delay_seconds=0),
+        output_dir=tmp_path,
+        progress_callback=lambda event, payload: events.append((event, payload)),
+    )
+
+    assert summary.error == ""
+    assert summary.audit_error == "BadErrorText"
+    assert summary.queried_count == 0
+    assert ("warning", {"message": "audit summary save failed: BadErrorText"}) in events
+
+
+def test_run_once_history_unprintable_write_failure_keeps_summary(tmp_path, monkeypatch):
+    def failing_append_history_records(*_args, **_kwargs):
+        raise BadErrorText()
+
+    monkeypatch.setattr("aruba_mm_cleanup.cleanup.append_history_records", failing_append_history_records)
+    first_query = "10.1.1.10 aa:bb:cc:00:00:01 user-a profiling"
+    connection = FakeConnection(
+        responses={
+            "no paging": "",
+            "show global-user-table list role profiling": [first_query, ""],
+            "aaa user delete mac aa:bb:cc:00:00:01": "User deleted",
+        }
+    )
+    events = []
+    runner = MmCleanupRunner(
+        connection_factory=lambda _config, _timeout: connection,
+        sleep_func=lambda _seconds: None,
+    )
+
+    summary = runner.run_once(
+        MmConnectionConfig(host="192.0.2.10", username="admin", password="secret"),
+        CleanupSettings(role="profiling", timeout=5, delete_delay_seconds=0),
+        output_dir=tmp_path,
+        progress_callback=lambda event, payload: events.append((event, payload)),
+    )
+
+    assert summary.error == ""
+    assert summary.history_error == "BadErrorText"
+    assert summary.delete_success_count == 1
+    assert summary.audit_path and summary.audit_path.exists()
+    assert ("warning", {"message": "deletion history save failed: BadErrorText"}) in events
 
 
 def test_audit_summary_write_failure_does_not_leave_partial_final_file(tmp_path, monkeypatch):
