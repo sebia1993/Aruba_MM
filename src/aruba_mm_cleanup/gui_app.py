@@ -1061,7 +1061,10 @@ class ArubaMmCleanupGui(tk.Tk):
         if not hasattr(self, "history_table"):
             return
         records = self._read_history_records(output_dir)
-        self.history_table.delete(*self.history_table.get_children())
+        try:
+            self.history_table.delete(*self.history_table.get_children())
+        except tk.TclError:
+            return
         self.history_row_counter = 0
         for record in records[-MAX_HISTORY_ROWS:]:
             run_at = str(record.get("run_at", ""))[:19].replace("T", " ")
