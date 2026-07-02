@@ -107,6 +107,34 @@ def test_run_once_records_partial_delete_failure(tmp_path):
     assert connection.disconnected is True
 
 
+def test_run_once_zero_delete_delay_starts_delete_after_countdown_zero(tmp_path):
+    first_query = "10.1.1.10 aa:bb:cc:00:00:01 user-a profiling"
+    connection = FakeConnection(
+        responses={
+            "no paging": "",
+            "show global-user-table list role profiling": [first_query, ""],
+            "aaa user delete mac aa:bb:cc:00:00:01": "User deleted",
+        }
+    )
+    events = []
+    runner = MmCleanupRunner(
+        connection_factory=lambda _config, _timeout: connection,
+        sleep_func=lambda _seconds: None,
+    )
+
+    summary = runner.run_once(
+        MmConnectionConfig(host="192.0.2.10", username="admin", password="secret"),
+        CleanupSettings(role="profiling", timeout=5, delete_delay_seconds=0),
+        output_dir=tmp_path,
+        progress_callback=lambda event, payload: events.append((event, payload)),
+    )
+
+    assert summary.delete_success_count == 1
+    countdown_events = [payload["remaining"] for event, payload in events if event == "countdown"]
+    assert countdown_events == [0]
+    assert "aaa user delete mac aa:bb:cc:00:00:01" in connection.commands
+
+
 def test_run_once_flags_successfully_deleted_mac_that_reappears(tmp_path):
     first_query = "10.1.1.10 aa:bb:cc:00:00:01 user-a profiling\n10.1.1.11 aa:bb:cc:00:00:02 user-b profiling"
     verify_query = "10.1.1.10 aa:bb:cc:00:00:01 user-a profiling\n10.1.1.11 aa:bb:cc:00:00:02 user-b profiling"

@@ -17,8 +17,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     parser.add_argument("--enable-password", default="", help="optional enable password")
     parser.add_argument("--port", type=int, default=22, help="SSH port")
     parser.add_argument("--role", default="profiling", help="role to query and clean")
-    parser.add_argument("--timeout", type=int, default=60, help="per-command timeout seconds")
-    parser.add_argument("--delay", type=int, default=60, help="delete countdown seconds")
+    parser.add_argument("--timeout", type=int, default=60, help="device response timeout seconds")
+    parser.add_argument("--delay", type=int, default=60, help="countdown seconds between query and delete")
     parser.add_argument("--output-dir", type=Path, default=Path("outputs"), help="audit output directory")
     parser.add_argument("--yes", action="store_true", help="run without an interactive pre-countdown confirmation")
     args = parser.parse_args(argv)
@@ -26,7 +26,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     password = args.password if args.password is not None else getpass.getpass("Password: ")
     if not args.yes:
         answer = input(
-            f"Query role '{args.role}' on {args.host}, then auto-delete after {args.delay}s. Continue? [y/N] "
+            f"Query role '{args.role}' on {args.host}, then auto-delete after {max(0, args.delay)}s countdown. Continue? [y/N] "
         )
         if answer.strip().casefold() not in {"y", "yes"}:
             print("Canceled before query.")

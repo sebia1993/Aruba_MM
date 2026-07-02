@@ -4,6 +4,8 @@ import threading
 import time
 from types import SimpleNamespace
 
+import pytest
+
 from aruba_mm_cleanup import __version__
 from aruba_mm_cleanup.gui_app import (
     ACCENT,
@@ -124,6 +126,20 @@ def make_headless_gui():
     return app
 
 
+def make_input_gui():
+    app = object.__new__(ArubaMmCleanupGui)
+    app.host_var = FakeVar("192.0.2.10")
+    app.port_var = FakeVar("22")
+    app.username_var = FakeVar("admin")
+    app.password_var = FakeVar("secret")
+    app.enable_password_var = FakeVar("")
+    app.role_var = FakeVar("profiling")
+    app.timeout_var = FakeVar("15")
+    app.delete_delay_var = FakeVar("0")
+    app.output_dir_var = FakeVar("/tmp/aruba-mm-cleanup")
+    return app
+
+
 def test_version_and_gui_constants():
     assert __version__ == "0.1.0"
     assert APP_TITLE == "Aruba MM Cleanup Dashboard"
@@ -138,6 +154,31 @@ def test_version_and_gui_constants():
     assert MAX_HISTORY_ROWS == 500
     assert DEFAULT_INTERVAL_SECONDS == 300
     assert MIN_INTERVAL_SECONDS == 60
+
+
+def test_read_inputs_uses_configurable_delete_delay_and_device_timeout():
+    app = make_input_gui()
+
+    config, settings, output_dir = ArubaMmCleanupGui._read_inputs(app)
+
+    assert config.host == "192.0.2.10"
+    assert settings.timeout == 15
+    assert settings.delete_delay_seconds == 0
+    assert str(output_dir) == "/tmp/aruba-mm-cleanup"
+
+
+def test_read_inputs_reports_clear_delay_and_timeout_errors():
+    app = make_input_gui()
+    app.timeout_var.set("slow")
+
+    with pytest.raises(ValueError, match="장비 응답 대기"):
+        ArubaMmCleanupGui._read_inputs(app)
+
+    app = make_input_gui()
+    app.delete_delay_var.set("later")
+
+    with pytest.raises(ValueError, match="삭제 대기"):
+        ArubaMmCleanupGui._read_inputs(app)
 
 
 def test_delete_progress_events_update_counters_immediately():

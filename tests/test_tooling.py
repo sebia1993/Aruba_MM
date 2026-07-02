@@ -31,6 +31,22 @@ def test_release_zip_verifier_checks_required_files(tmp_path):
     assert completed.returncode == 0, completed.stdout + completed.stderr
 
 
+def test_cli_help_distinguishes_timeout_from_delete_delay():
+    completed = subprocess.run(
+        [sys.executable, "-m", "aruba_mm_cleanup.cli", "--help"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    output = completed.stdout + completed.stderr
+    assert completed.returncode == 0, output
+    assert "--timeout" in output
+    assert "device response timeout seconds" in output
+    assert "--delay" in output
+    assert "countdown seconds between query and delete" in output
+
+
 def test_windows_build_and_docs_reference_current_exe_names():
     repo_root = Path(__file__).parents[1]
     build_script = (repo_root / "build_windows_gui_exe.ps1").read_text(encoding="utf-8")

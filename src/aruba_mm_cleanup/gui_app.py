@@ -78,6 +78,7 @@ class ArubaMmCleanupGui(tk.Tk):
         self.enable_password_var = tk.StringVar()
         self.role_var = tk.StringVar(value=DEFAULT_ROLE)
         self.timeout_var = tk.StringVar(value="60")
+        self.delete_delay_var = tk.StringVar(value=str(DELETE_DELAY_SECONDS))
         self.interval_var = tk.StringVar(value=str(DEFAULT_INTERVAL_SECONDS))
         self.output_dir_var = tk.StringVar(value=str(DEFAULT_OUTPUT_DIR))
         self.status_var = tk.StringVar(value="대기 중")
@@ -233,7 +234,7 @@ class ArubaMmCleanupGui(tk.Tk):
         ).grid(row=0, column=1, sticky="e", padx=18, pady=(16, 2))
         tk.Label(
             frame,
-            text="조회 후 60초 동안 취소할 수 있고, 시간이 지나면 조회 snapshot의 MAC만 삭제합니다.",
+            text="조회 후 설정한 삭제 대기 시간 동안 취소할 수 있고, 시간이 지나면 조회 snapshot의 MAC만 삭제합니다.",
             bg=PANEL,
             fg=MUTED,
             font=("Segoe UI", 10),
@@ -252,10 +253,11 @@ class ArubaMmCleanupGui(tk.Tk):
         self._entry(frame, "암호", self.password_var, 0, 3, show="*")
         self._entry(frame, "Enable 암호", self.enable_password_var, 0, 4, show="*")
         self._entry(frame, "Role", self.role_var, 0, 5)
-        self._entry(frame, "Timeout", self.timeout_var, 2, 0, width=7)
-        self._entry(frame, "주기(초)", self.interval_var, 2, 1, width=8)
+        self._entry(frame, "장비 응답 대기(초)", self.timeout_var, 2, 0, width=12)
+        self._entry(frame, "삭제 대기(초)", self.delete_delay_var, 2, 1, width=10)
+        self._entry(frame, "주기(초)", self.interval_var, 2, 2, width=8)
         tk.Label(frame, text="결과 폴더", bg=PANEL, fg=MUTED, font=("Segoe UI", 9)).grid(
-            row=2, column=2, sticky="w", padx=12, pady=(10, 2)
+            row=2, column=3, sticky="w", padx=12, pady=(10, 2)
         )
         tk.Entry(
             frame,
@@ -270,7 +272,7 @@ class ArubaMmCleanupGui(tk.Tk):
             insertbackground=TEXT,
             font=("Segoe UI", 10),
         ).grid(
-            row=3, column=2, columnspan=3, sticky="ew", padx=12, pady=(0, 14)
+            row=3, column=3, columnspan=2, sticky="ew", padx=12, pady=(0, 14)
         )
         tk.Button(
             frame,
@@ -670,7 +672,11 @@ class ArubaMmCleanupGui(tk.Tk):
         try:
             timeout = max(5, int(self.timeout_var.get().strip() or "60"))
         except ValueError as exc:
-            raise ValueError("Timeout은 숫자로 입력하세요.") from exc
+            raise ValueError("장비 응답 대기(초)는 숫자로 입력하세요.") from exc
+        try:
+            delete_delay = max(0, int(self.delete_delay_var.get().strip() or str(DELETE_DELAY_SECONDS)))
+        except ValueError as exc:
+            raise ValueError("삭제 대기(초)는 숫자로 입력하세요.") from exc
         config = MmConnectionConfig(
             host=host,
             username=username,
@@ -681,7 +687,7 @@ class ArubaMmCleanupGui(tk.Tk):
         settings = CleanupSettings(
             role=self.role_var.get().strip() or DEFAULT_ROLE,
             timeout=timeout,
-            delete_delay_seconds=DELETE_DELAY_SECONDS,
+            delete_delay_seconds=delete_delay,
         )
         output_dir = Path(self.output_dir_var.get().strip() or DEFAULT_OUTPUT_DIR)
         return config, settings, output_dir
