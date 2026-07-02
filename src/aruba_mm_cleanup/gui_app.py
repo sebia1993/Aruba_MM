@@ -20,8 +20,7 @@ APP_TITLE = "Aruba MM Cleanup Dashboard"
 DEFAULT_OUTPUT_DIR = Path.home() / "Documents" / "ArubaMMCleanup" / "outputs"
 DEFAULT_ROLE = "profiling"
 DEFAULT_INTERVAL_SECONDS = 300
-MIN_INTERVAL_SECONDS = 60
-DELETE_DELAY_SECONDS = 60
+MIN_INTERVAL_SECONDS = 1
 MAX_HISTORY_ROWS = 500
 MAX_LOG_LINES = 1000
 HISTORY_FILE_NAME = "deletion_history.jsonl"
@@ -78,7 +77,6 @@ class ArubaMmCleanupGui(tk.Tk):
         self.enable_password_var = tk.StringVar()
         self.role_var = tk.StringVar(value=DEFAULT_ROLE)
         self.timeout_var = tk.StringVar(value="60")
-        self.delete_delay_var = tk.StringVar(value=str(DELETE_DELAY_SECONDS))
         self.interval_var = tk.StringVar(value=str(DEFAULT_INTERVAL_SECONDS))
         self.output_dir_var = tk.StringVar(value=str(DEFAULT_OUTPUT_DIR))
         self.status_var = tk.StringVar(value="대기 중")
@@ -234,7 +232,7 @@ class ArubaMmCleanupGui(tk.Tk):
         ).grid(row=0, column=1, sticky="e", padx=18, pady=(16, 2))
         tk.Label(
             frame,
-            text="조회 후 설정한 삭제 대기 시간 동안 취소할 수 있고, 시간이 지나면 조회 snapshot의 MAC만 삭제합니다.",
+            text="조회 snapshot에서 수집한 MAC만 사용하며, 조회가 끝나면 즉시 삭제 명령을 실행합니다.",
             bg=PANEL,
             fg=MUTED,
             font=("Segoe UI", 10),
@@ -254,10 +252,9 @@ class ArubaMmCleanupGui(tk.Tk):
         self._entry(frame, "Enable 암호", self.enable_password_var, 0, 4, show="*")
         self._entry(frame, "Role", self.role_var, 0, 5)
         self._entry(frame, "장비 응답 대기(초)", self.timeout_var, 2, 0, width=12)
-        self._entry(frame, "삭제 대기(초)", self.delete_delay_var, 2, 1, width=10)
-        self._entry(frame, "주기(초)", self.interval_var, 2, 2, width=8)
+        self._entry(frame, "주기(초)", self.interval_var, 2, 1, width=8)
         tk.Label(frame, text="결과 폴더", bg=PANEL, fg=MUTED, font=("Segoe UI", 9)).grid(
-            row=2, column=3, sticky="w", padx=12, pady=(10, 2)
+            row=2, column=2, sticky="w", padx=12, pady=(10, 2)
         )
         tk.Entry(
             frame,
@@ -272,7 +269,7 @@ class ArubaMmCleanupGui(tk.Tk):
             insertbackground=TEXT,
             font=("Segoe UI", 10),
         ).grid(
-            row=3, column=3, columnspan=2, sticky="ew", padx=12, pady=(0, 14)
+            row=3, column=2, columnspan=3, sticky="ew", padx=12, pady=(0, 14)
         )
         tk.Button(
             frame,
@@ -673,10 +670,6 @@ class ArubaMmCleanupGui(tk.Tk):
             timeout = max(5, int(self.timeout_var.get().strip() or "60"))
         except ValueError as exc:
             raise ValueError("장비 응답 대기(초)는 숫자로 입력하세요.") from exc
-        try:
-            delete_delay = max(0, int(self.delete_delay_var.get().strip() or str(DELETE_DELAY_SECONDS)))
-        except ValueError as exc:
-            raise ValueError("삭제 대기(초)는 숫자로 입력하세요.") from exc
         config = MmConnectionConfig(
             host=host,
             username=username,
@@ -687,16 +680,19 @@ class ArubaMmCleanupGui(tk.Tk):
         settings = CleanupSettings(
             role=self.role_var.get().strip() or DEFAULT_ROLE,
             timeout=timeout,
-            delete_delay_seconds=delete_delay,
+            delete_delay_seconds=0,
         )
         output_dir = Path(self.output_dir_var.get().strip() or DEFAULT_OUTPUT_DIR)
         return config, settings, output_dir
 
     def _read_interval(self) -> int:
         try:
-            return max(MIN_INTERVAL_SECONDS, int(self.interval_var.get().strip() or str(DEFAULT_INTERVAL_SECONDS)))
+            interval = int(self.interval_var.get().strip() or str(DEFAULT_INTERVAL_SECONDS))
         except ValueError as exc:
-            raise ValueError("주기(초)는 숫자로 입력하세요.") from exc
+            raise ValueError("주기(초)는 1 이상 숫자로 입력하세요.") from exc
+        if interval < MIN_INTERVAL_SECONDS:
+            raise ValueError("주기(초)는 1 이상 숫자로 입력하세요.")
+        return interval
 
     def _drain_events(self) -> None:
         if self.closing:
@@ -747,12 +743,12 @@ class ArubaMmCleanupGui(tk.Tk):
         elif event == "query_done":
             macs = list(payload.get("macs") or [])
             self.counter_vars["queried"].set(str(payload.get("count", 0)))
-            self._replace_table(macs, "삭제 대기")
+            self._replace_table(macs, "삭제 대상")
             self._log(f"QUERY DONE: {payload.get('count', 0)} MAC(s)")
         elif event == "countdown":
             remaining = int(payload.get("remaining", 0))
-            self._set_timer(f"{remaining}s", "삭제 대기" if remaining > 0 else "삭제 시작")
-            self.status_var.set(f"{remaining}초 후 자동 삭제")
+            self._set_timer(f"{remaining}s", "삭제 시작 대기" if remaining > 0 else "삭제 시작")
+            self.status_var.set(f"{remaining}초 후 삭제 시작" if remaining > 0 else "삭제 시작")
             self.cancel_button.configure(state="normal" if remaining > 0 else "disabled")
         elif event == "delete_start":
             self.status_var.set("MAC 삭제 중")
@@ -845,7 +841,7 @@ class ArubaMmCleanupGui(tk.Tk):
     def _set_all_pending_status(self, status: str) -> None:
         for item_id in self.table.get_children():
             values = list(self.table.item(item_id, "values"))
-            if values[1] in {"삭제 대기", "삭제 중"}:
+            if values[1] in {"삭제 대상", "삭제 중"}:
                 values[1] = status
                 self.table.item(item_id, values=values)
 

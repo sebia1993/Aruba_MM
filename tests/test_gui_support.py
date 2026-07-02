@@ -16,7 +16,6 @@ from aruba_mm_cleanup.gui_app import (
     DANGER_SOFT,
     DEFAULT_INTERVAL_SECONDS,
     DEFAULT_ROLE,
-    DELETE_DELAY_SECONDS,
     HISTORY_FILE_NAME,
     MAX_LOG_LINES,
     MAX_HISTORY_ROWS,
@@ -135,7 +134,7 @@ def make_input_gui():
     app.enable_password_var = FakeVar("")
     app.role_var = FakeVar("profiling")
     app.timeout_var = FakeVar("15")
-    app.delete_delay_var = FakeVar("0")
+    app.interval_var = FakeVar("1")
     app.output_dir_var = FakeVar("/tmp/aruba-mm-cleanup")
     return app
 
@@ -150,13 +149,12 @@ def test_version_and_gui_constants():
     assert TEXT == "#171a20"
     assert CARD_BG == "#ffffff"
     assert DEFAULT_ROLE == "profiling"
-    assert DELETE_DELAY_SECONDS == 60
     assert MAX_HISTORY_ROWS == 500
     assert DEFAULT_INTERVAL_SECONDS == 300
-    assert MIN_INTERVAL_SECONDS == 60
+    assert MIN_INTERVAL_SECONDS == 1
 
 
-def test_read_inputs_uses_configurable_delete_delay_and_device_timeout():
+def test_read_inputs_uses_immediate_delete_and_device_timeout():
     app = make_input_gui()
 
     config, settings, output_dir = ArubaMmCleanupGui._read_inputs(app)
@@ -167,18 +165,28 @@ def test_read_inputs_uses_configurable_delete_delay_and_device_timeout():
     assert str(output_dir) == "/tmp/aruba-mm-cleanup"
 
 
-def test_read_inputs_reports_clear_delay_and_timeout_errors():
+def test_read_inputs_reports_clear_timeout_errors():
     app = make_input_gui()
     app.timeout_var.set("slow")
 
     with pytest.raises(ValueError, match="장비 응답 대기"):
         ArubaMmCleanupGui._read_inputs(app)
 
-    app = make_input_gui()
-    app.delete_delay_var.set("later")
 
-    with pytest.raises(ValueError, match="삭제 대기"):
-        ArubaMmCleanupGui._read_inputs(app)
+def test_read_interval_uses_actual_input_value():
+    app = make_input_gui()
+    app.interval_var.set("1")
+
+    assert ArubaMmCleanupGui._read_interval(app) == 1
+
+
+@pytest.mark.parametrize("value", ["0", "-1", "soon"])
+def test_read_interval_rejects_invalid_values(value):
+    app = make_input_gui()
+    app.interval_var.set(value)
+
+    with pytest.raises(ValueError, match="주기\\(초\\)"):
+        ArubaMmCleanupGui._read_interval(app)
 
 
 def test_delete_progress_events_update_counters_immediately():
