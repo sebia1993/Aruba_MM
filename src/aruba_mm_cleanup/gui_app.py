@@ -1203,7 +1203,10 @@ class ArubaMmCleanupGui(tk.Tk):
         if self.copy_notice_frame is not None:
             self.copy_notice_frame.place(relx=0.5, rely=0.5, anchor="center")
             self.copy_notice_frame.lift()
-        self.copy_notice_after_id = self.after(1000, self._hide_copy_notice)
+        try:
+            self.copy_notice_after_id = self.after(1000, self._hide_copy_notice)
+        except tk.TclError:
+            self.copy_notice_after_id = None
 
     def _hide_copy_notice(self) -> None:
         self.copy_notice_title_var.set("")

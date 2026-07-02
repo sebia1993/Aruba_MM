@@ -1137,6 +1137,26 @@ def test_result_mac_column_click_copies_mac_and_hides_notice():
     assert app.copy_notice_after_id is None
 
 
+def test_mac_copy_notice_ignores_hide_timer_schedule_failure():
+    app = make_headless_gui()
+    table = FakeTreeTable()
+    table.insert(
+        "",
+        "end",
+        iid="aa:bb:cc:00:00:01",
+        values=("aa:bb:cc:00:00:01", "삭제 대상", "2026-07-02 13:00:00", "", ""),
+    )
+    app.after = lambda _ms, _callback: (_ for _ in ()).throw(tk.TclError("invalid command name"))
+
+    ArubaMmCleanupGui._copy_mac_from_table_event(app, FakeClickEvent(), table, "#1")
+
+    assert app.clipboard_values == ["aa:bb:cc:00:00:01"]
+    assert app.copy_notice_title_var.get() == "복사 완료"
+    assert app.copy_notice_mac_var.get() == "aa:bb:cc:00:00:01"
+    assert app.copy_notice_frame.hidden is False
+    assert app.copy_notice_after_id is None
+
+
 def test_repeated_mac_copy_replaces_center_notice_timer():
     app = make_headless_gui()
     table = FakeTreeTable()
