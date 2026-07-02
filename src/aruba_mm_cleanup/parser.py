@@ -39,7 +39,10 @@ def parse_global_user_table_explained(output: str, *, role_filter: str = "profil
     BSSID or AP details. This parser keeps only the first user MAC-like token
     from the identity columns near the start of each data row.
     """
-    role = role_filter.strip().casefold() if isinstance(role_filter, str) else "profiling"
+    try:
+        role = role_filter.strip().casefold() if isinstance(role_filter, str) else "profiling"
+    except Exception:
+        role = "profiling"
     if not isinstance(output, str):
         return ParseResult(entries=[], decisions=[ParseDecision(0, "ignored", "invalid_output")])
     entries: dict[str, UserEntry] = {}

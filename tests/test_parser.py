@@ -43,6 +43,21 @@ def test_parse_global_user_table_uses_default_role_when_role_filter_is_none():
     assert [entry.mac for entry in entries] == ["aa:bb:cc:00:00:01"]
 
 
+def test_parse_global_user_table_uses_default_role_when_role_filter_strip_fails():
+    class BadRole(str):
+        def strip(self, *_args, **_kwargs):
+            raise RuntimeError("bad strip")
+
+    output = """
+10.1.1.10 aa:bb:cc:00:00:01 user-a profiling
+10.1.1.11 aa:bb:cc:00:00:02 user-b employee
+"""
+
+    entries = parse_global_user_table(output, role_filter=BadRole("profiling"))  # type: ignore[arg-type]
+
+    assert [entry.mac for entry in entries] == ["aa:bb:cc:00:00:01"]
+
+
 def test_parse_global_user_table_handles_non_string_output_without_attribute_error():
     result = parse_global_user_table_explained(None, role_filter="profiling")  # type: ignore[arg-type]
 
