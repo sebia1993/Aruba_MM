@@ -102,6 +102,11 @@ class DestroyedHistoryTable(FakeHistoryTable):
         raise tk.TclError("invalid command name")
 
 
+class InsertFailingHistoryTable(FakeHistoryTable):
+    def insert(self, _parent, _index, iid, values, tags=()):
+        raise tk.TclError("invalid command name")
+
+
 class FakeClickEvent:
     x = 1
     y = 1
@@ -591,6 +596,23 @@ def test_history_load_ignores_destroyed_history_table(tmp_path):
     app._load_history_from_output_dir(output_dir)
 
     assert app.history_row_counter == 1
+
+
+def test_history_load_ignores_history_row_insert_failure(tmp_path):
+    output_dir = tmp_path / "outputs"
+    output_dir.mkdir()
+    (output_dir / HISTORY_FILE_NAME).write_text(
+        json.dumps({"run_at": "2026-07-02T13:00:00", "mac": "aa:bb:cc:00:00:01"}),
+        encoding="utf-8",
+    )
+    app = make_headless_gui()
+    app.history_table = InsertFailingHistoryTable()
+    app.history_row_counter = 0
+    app.loaded_history_dir = None
+
+    app._load_history_from_output_dir(output_dir)
+
+    assert app.history_row_counter == 0
 
 
 def test_history_load_ignores_non_string_jsonl_mac(tmp_path):

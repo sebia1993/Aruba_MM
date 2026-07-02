@@ -1145,8 +1145,11 @@ class ArubaMmCleanupGui(tk.Tk):
         tags: tuple[str, ...] = (),
     ) -> None:
         row_id = f"history-{self.history_row_counter}"
+        try:
+            self.history_table.insert("", "end", iid=row_id, values=(run_at, mac, result, error), tags=tags)
+        except tk.TclError:
+            return
         self.history_row_counter += 1
-        self.history_table.insert("", "end", iid=row_id, values=(run_at, mac, result, error), tags=tags)
 
     def _copy_mac_from_table_event(self, event: tk.Event, table: ttk.Treeview, mac_column: str) -> None:
         if table.identify_column(event.x) != mac_column:
