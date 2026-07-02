@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -112,43 +113,80 @@ class CleanupRunSummary:
             "verification_skipped": self.verification_skipped,
             "target_macs": self.target_macs,
             "reappeared_macs": self.reappeared_macs,
-            "query_parse_decisions": [
-                {
-                    "line_number": item.line_number,
-                    "action": item.action,
-                    "reason": item.reason,
-                    "mac": item.mac,
-                    "role": item.role,
-                    "user_type": item.user_type,
-                    "type_na": item.type_na,
-                }
-                for item in self.query_parse_decisions
-            ],
-            "verify_parse_decisions": [
-                {
-                    "line_number": item.line_number,
-                    "action": item.action,
-                    "reason": item.reason,
-                    "mac": item.mac,
-                    "role": item.role,
-                    "user_type": item.user_type,
-                    "type_na": item.type_na,
-                }
-                for item in self.verify_parse_decisions
-            ],
-            "delete_results": [
-                {
-                    "mac": item.mac,
-                    "success": item.success,
-                    "status": item.status or ("deleted" if item.success else "failed"),
-                    "response_status": item.response_status,
-                    "verified_absent": item.verified_absent,
-                    "command": item.command,
-                    "error": item.error,
-                }
-                for item in self.delete_results
-            ],
+            "query_parse_decisions": [_parse_decision_audit_dict(item) for item in self.query_parse_decisions],
+            "verify_parse_decisions": [_parse_decision_audit_dict(item) for item in self.verify_parse_decisions],
+            "delete_results": [_delete_result_audit_dict(item) for item in self.delete_results],
             "audit_error": self.audit_error,
             "history_error": self.history_error,
             "error": self.error,
         }
+
+
+def _parse_decision_audit_dict(item: Any) -> dict[str, Any]:
+    return {
+        "line_number": _safe_int(_item_value(item, "line_number", 0)),
+        "action": _safe_text(_item_value(item, "action", "")),
+        "reason": _safe_text(_item_value(item, "reason", "")),
+        "mac": _safe_text(_item_value(item, "mac", "")),
+        "role": _safe_text(_item_value(item, "role", "")),
+        "user_type": _safe_text(_item_value(item, "user_type", "")),
+        "type_na": _safe_bool(_item_value(item, "type_na", False)),
+    }
+
+
+def _delete_result_audit_dict(item: Any) -> dict[str, Any]:
+    success = _safe_bool(_item_value(item, "success", False))
+    status = _safe_text(_item_value(item, "status", ""))
+    return {
+        "mac": _safe_text(_item_value(item, "mac", "")),
+        "success": success,
+        "status": status or ("deleted" if success else "failed"),
+        "response_status": _safe_text(_item_value(item, "response_status", "")),
+        "verified_absent": _safe_optional_bool(_item_value(item, "verified_absent", None)),
+        "command": _safe_text(_item_value(item, "command", "")),
+        "error": _safe_text(_item_value(item, "error", "")),
+    }
+
+
+def _item_value(item: Any, name: str, default: Any) -> Any:
+    if isinstance(item, Mapping):
+        return item.get(name, default)
+    return getattr(item, name, default)
+
+
+def _safe_text(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    try:
+        return str(value)
+    except Exception:
+        return repr(value)
+
+
+def _safe_int(value: Any) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _safe_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().casefold() in {"1", "true", "yes", "y"}
+    return bool(value)
+
+
+def _safe_optional_bool(value: Any) -> Optional[bool]:
+    if value is None or isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().casefold()
+        if normalized in {"1", "true", "yes", "y"}:
+            return True
+        if normalized in {"0", "false", "no", "n"}:
+            return False
+    return None

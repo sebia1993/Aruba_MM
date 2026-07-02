@@ -11,9 +11,10 @@ from aruba_mm_cleanup.cleanup import (
     build_delete_command,
     build_query_command,
     classify_delete_response,
+    write_audit_summary,
 )
 from aruba_mm_cleanup.connection import connect_to_mm
-from aruba_mm_cleanup.models import CleanupRunSummary, CleanupSettings, DeleteResult, MmConnectionConfig
+from aruba_mm_cleanup.models import CleanupRunSummary, CleanupSettings, DeleteResult, MmConnectionConfig, ParseDecision
 from aruba_mm_cleanup.session import MmSession
 
 
@@ -776,6 +777,35 @@ def test_audit_save_failure_does_not_break_summary(tmp_path):
     assert summary.audit_path is None
     assert summary.audit_error
     assert any(event == "warning" and "audit summary save failed" in payload["message"] for event, payload in events)
+
+
+def test_audit_summary_tolerates_malformed_internal_items(tmp_path):
+    summary = CleanupRunSummary(started_at=datetime(2026, 7, 2, 13, 0, 0), role="profiling")
+    summary.queried_count = 1
+    summary.query_parse_decisions = [
+        ParseDecision(1, "selected", "selected_identity_mac_before_role", mac="aa:bb:cc:00:00:01"),
+        object(),  # type: ignore[list-item]
+    ]
+    summary.verify_parse_decisions = [
+        {"line_number": "bad", "action": object(), "type_na": "false"},  # type: ignore[list-item]
+    ]
+    summary.delete_results = [
+        DeleteResult(mac="aa:bb:cc:00:00:01", success=False, command="cmd", error=object()),  # type: ignore[arg-type]
+        {"mac": "aa:bb:cc:00:00:02", "success": "true", "command": object(), "verified_absent": "true"},  # type: ignore[list-item]
+    ]
+
+    path = write_audit_summary(summary, output_dir=tmp_path, host="192.0.2.10")
+
+    audit = json.loads(path.read_text(encoding="utf-8"))
+    assert audit["queried_count"] == 1
+    assert audit["query_parse_decisions"][0]["mac"] == "aa:bb:cc:00:00:01"
+    assert audit["query_parse_decisions"][1]["line_number"] == 0
+    assert audit["verify_parse_decisions"][0]["line_number"] == 0
+    assert audit["verify_parse_decisions"][0]["type_na"] is False
+    assert audit["delete_results"][0]["status"] == "failed"
+    assert audit["delete_results"][0]["error"]
+    assert audit["delete_results"][1]["success"] is True
+    assert audit["delete_results"][1]["verified_absent"] is True
 
 
 def test_history_append_serialization_failure_does_not_partially_append(tmp_path):
