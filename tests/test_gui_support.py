@@ -60,6 +60,29 @@ class FailingConfigureButton(FakeButton):
         raise tk.TclError("invalid command name")
 
 
+class FakeSettingsFrame:
+    def __init__(self):
+        self.hidden = False
+        self.grid_remove_calls = 0
+        self.grid_calls = 0
+
+    def grid_remove(self):
+        self.grid_remove_calls += 1
+        self.hidden = True
+
+    def grid(self):
+        self.grid_calls += 1
+        self.hidden = False
+
+
+class DestroyedSettingsFrame(FakeSettingsFrame):
+    def grid_remove(self):
+        raise tk.TclError("invalid command name")
+
+    def grid(self):
+        raise tk.TclError("invalid command name")
+
+
 class FakeHistoryTable:
     def __init__(self):
         self.rows = {}
@@ -667,6 +690,36 @@ def test_scheduler_stopped_button_failure_still_updates_timer():
 
     assert app.scheduler_running is False
     assert app.timers[-1] == ("-", "대기")
+
+
+def test_sync_settings_visibility_toggles_settings_frame():
+    app = make_headless_gui()
+    app.settings_frame = FakeSettingsFrame()
+    app.is_running = True
+    app.scheduler_running = False
+
+    ArubaMmCleanupGui._sync_settings_visibility(app)
+
+    assert app.settings_frame.hidden is True
+    assert app.settings_frame.grid_remove_calls == 1
+
+    app.is_running = False
+    ArubaMmCleanupGui._sync_settings_visibility(app)
+
+    assert app.settings_frame.hidden is False
+    assert app.settings_frame.grid_calls == 1
+
+
+def test_sync_settings_visibility_ignores_destroyed_settings_frame():
+    app = make_headless_gui()
+    app.settings_frame = DestroyedSettingsFrame()
+    app.is_running = True
+    app.scheduler_running = False
+
+    ArubaMmCleanupGui._sync_settings_visibility(app)
+
+    app.is_running = False
+    ArubaMmCleanupGui._sync_settings_visibility(app)
 
 
 def test_drain_events_handles_missing_progress_payload_as_empty_dict():

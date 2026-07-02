@@ -1121,10 +1121,13 @@ class ArubaMmCleanupGui(tk.Tk):
     def _sync_settings_visibility(self) -> None:
         if self.settings_frame is None:
             return
-        if self.is_running or self.scheduler_running:
-            self.settings_frame.grid_remove()
-        else:
-            self.settings_frame.grid()
+        try:
+            if self.is_running or self.scheduler_running:
+                self.settings_frame.grid_remove()
+            else:
+                self.settings_frame.grid()
+        except tk.TclError:
+            return
 
     def _append_history_rows(self, summary) -> None:
         delete_results = getattr(summary, "delete_results", None)
