@@ -153,9 +153,12 @@ def _delete_result_audit_dict(item: Any) -> dict[str, Any]:
 
 
 def _item_value(item: Any, name: str, default: Any) -> Any:
-    if isinstance(item, Mapping):
-        return item.get(name, default)
-    return getattr(item, name, default)
+    try:
+        if isinstance(item, Mapping):
+            return item.get(name, default)
+        return getattr(item, name, default)
+    except Exception:
+        return default
 
 
 def _safe_list_items(value: Any) -> list[Any]:

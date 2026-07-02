@@ -864,6 +864,45 @@ def test_audit_summary_tolerates_unprintable_text_values(tmp_path):
     assert audit["delete_results"][0]["error"] == ""
 
 
+def test_audit_summary_tolerates_failing_item_value_access(tmp_path):
+    class FailingMapping(dict):
+        def get(self, _key, _default=None):
+            raise RuntimeError("bad mapping get")
+
+    class FailingAttrs:
+        @property
+        def line_number(self):
+            raise RuntimeError("bad line")
+
+        @property
+        def action(self):
+            raise RuntimeError("bad action")
+
+        @property
+        def reason(self):
+            raise RuntimeError("bad reason")
+
+        @property
+        def mac(self):
+            raise RuntimeError("bad mac")
+
+    summary = CleanupRunSummary(started_at=datetime(2026, 7, 2, 13, 0, 0), role="profiling")
+    summary.query_parse_decisions = [FailingMapping({"line_number": 9, "action": "selected"})]  # type: ignore[list-item]
+    summary.verify_parse_decisions = [FailingAttrs()]  # type: ignore[list-item]
+    summary.delete_results = [FailingMapping({"mac": "aa:bb:cc:00:00:01", "success": True})]  # type: ignore[list-item]
+
+    path = write_audit_summary(summary, output_dir=tmp_path, host="192.0.2.10")
+
+    audit = json.loads(path.read_text(encoding="utf-8"))
+    assert audit["query_parse_decisions"][0]["line_number"] == 0
+    assert audit["query_parse_decisions"][0]["action"] == ""
+    assert audit["verify_parse_decisions"][0]["line_number"] == 0
+    assert audit["verify_parse_decisions"][0]["mac"] == ""
+    assert audit["delete_results"][0]["mac"] == ""
+    assert audit["delete_results"][0]["success"] is False
+    assert audit["delete_results"][0]["status"] == "failed"
+
+
 def test_summary_writes_tolerate_malformed_started_at(tmp_path):
     class BadStartedAt:
         def isoformat(self, *_args, **_kwargs):
