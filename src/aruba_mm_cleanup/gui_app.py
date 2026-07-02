@@ -71,6 +71,12 @@ class ArubaMmCleanupGui(tk.Tk):
         self.settings_frame: Optional[tk.Frame] = None
         self.loaded_history_dir: Optional[Path] = None
         self._drain_after_id: Optional[str] = None
+        self.copy_notice_after_id: Optional[str] = None
+        self.cumulative_queried_count = 0
+        self.cumulative_deleted_count = 0
+        self.current_run_queried_count = 0
+        self.current_run_query_counted = False
+        self.current_run_delete_counted = False
 
         self.host_var = tk.StringVar()
         self.port_var = tk.StringVar(value="22")
@@ -84,9 +90,10 @@ class ArubaMmCleanupGui(tk.Tk):
         self.status_var = tk.StringVar(value="대기 중")
         self.timer_value_var = tk.StringVar(value="-")
         self.timer_state_var = tk.StringVar(value="대기")
+        self.copy_notice_var = tk.StringVar(value="")
         self.counter_vars = {
             "queried": tk.StringVar(value="0"),
-            "deleted": tk.StringVar(value="-"),
+            "deleted": tk.StringVar(value="0"),
         }
 
         self._build_styles()
@@ -321,8 +328,8 @@ class ArubaMmCleanupGui(tk.Tk):
         frame.grid(row=2, column=0, sticky="ew", pady=(16, 0))
         for column in range(3):
             frame.grid_columnconfigure(column, weight=1, uniform="cards")
-        self._card(frame, "조회 MAC", self.counter_vars["queried"], 0, TEXT)
-        self._card(frame, "삭제한 총 MAC", self.counter_vars["deleted"], 1, TEXT)
+        self._card(frame, "누적 조회 MAC", self.counter_vars["queried"], 0, TEXT)
+        self._card(frame, "누적 삭제 완료", self.counter_vars["deleted"], 1, TEXT)
         self._timer_card(frame, 2)
 
     def _card(self, parent: tk.Widget, title: str, variable: tk.StringVar, column: int, color: str) -> None:
@@ -336,7 +343,7 @@ class ArubaMmCleanupGui(tk.Tk):
     def _timer_card(self, parent: tk.Widget, column: int) -> None:
         card = tk.Frame(parent, bg=CARD_BG, highlightbackground=LINE, highlightthickness=1)
         card.grid(row=0, column=column, sticky="ew", padx=(8, 0))
-        tk.Label(card, text="타이머", bg=CARD_BG, fg=MUTED, font=("Segoe UI", 9)).pack(
+        tk.Label(card, text="작업 상태", bg=CARD_BG, fg=MUTED, font=("Segoe UI", 9)).pack(
             anchor="w", padx=16, pady=(12, 0)
         )
         tk.Label(card, textvariable=self.timer_value_var, bg=CARD_BG, fg=ACCENT, font=("Segoe UI Semibold", 20)).pack(
@@ -355,6 +362,13 @@ class ArubaMmCleanupGui(tk.Tk):
         top = tk.Frame(frame, bg=PANEL)
         top.grid(row=0, column=0, sticky="ew", padx=16, pady=(14, 8))
         tk.Label(top, text="삭제 대상 및 결과", bg=PANEL, fg=TEXT, font=("Segoe UI Semibold", 12)).pack(side="left")
+        tk.Label(
+            top,
+            textvariable=self.copy_notice_var,
+            bg=PANEL,
+            fg=ACCENT,
+            font=("Segoe UI", 9),
+        ).pack(side="right")
         columns = ("mac", "status", "queried_at", "deleted_at", "error")
         self.table = ttk.Treeview(frame, columns=columns, show="headings", height=9)
         headings = {
@@ -369,6 +383,7 @@ class ArubaMmCleanupGui(tk.Tk):
             self.table.heading(key, text=headings[key])
             self.table.column(key, width=widths[key], anchor="w")
         self.table.tag_configure("reappeared", foreground=DANGER)
+        self.table.bind("<ButtonRelease-1>", lambda event: self._copy_mac_from_table_event(event, self.table, "#1"))
         self.table.grid(row=1, column=0, sticky="nsew", padx=16, pady=(0, 12))
 
         history_top = tk.Frame(frame, bg=PANEL)
@@ -395,6 +410,10 @@ class ArubaMmCleanupGui(tk.Tk):
             self.history_table.heading(key, text=history_headings[key])
             self.history_table.column(key, width=history_widths[key], anchor="w")
         self.history_table.tag_configure("reappeared", foreground=DANGER)
+        self.history_table.bind(
+            "<ButtonRelease-1>",
+            lambda event: self._copy_mac_from_table_event(event, self.history_table, "#2"),
+        )
         self.history_table.grid(row=3, column=0, sticky="nsew", padx=16, pady=(0, 14))
 
     def _build_log(self, parent: tk.Widget) -> None:
@@ -577,6 +596,12 @@ class ArubaMmCleanupGui(tk.Tk):
             except tk.TclError:
                 pass
             self._drain_after_id = None
+        if self.copy_notice_after_id is not None:
+            try:
+                self.after_cancel(self.copy_notice_after_id)
+            except tk.TclError:
+                pass
+            self.copy_notice_after_id = None
         self._start_session_close(reason="app_close", enqueue_progress=False)
         self.after(SHUTDOWN_GRACE_MS, self._destroy_window)
 
@@ -739,7 +764,7 @@ class ArubaMmCleanupGui(tk.Tk):
         elif event == "query_done":
             macs = list(payload.get("macs") or [])
             type_na_macs = [str(mac) for mac in payload.get("type_na_macs") or []]
-            self.counter_vars["queried"].set(str(len(_unique_display_macs(macs))))
+            self._count_current_query(len(_unique_display_macs(macs)))
             self._replace_table(macs, "삭제 대상", type_na_macs=type_na_macs)
             self._log(f"QUERY DONE: {payload.get('count', 0)} MAC(s)")
             for mac in _unique_display_macs(type_na_macs):
@@ -782,12 +807,15 @@ class ArubaMmCleanupGui(tk.Tk):
             self._log(f"ERROR: {payload.get('error')}")
 
     def _handle_summary(self, summary) -> None:
+        self._ensure_cumulative_counters()
         target_count = len(getattr(summary, "target_macs", []) or []) or summary.queried_count
-        self.counter_vars["queried"].set(str(target_count))
-        if summary.error or summary.canceled or getattr(summary, "verification_skipped", False):
-            self.counter_vars["deleted"].set("-")
-        else:
-            self.counter_vars["deleted"].set(str(summary.delete_success_count))
+        if not self.current_run_query_counted:
+            self._count_current_query(target_count)
+        if not self.current_run_delete_counted:
+            if not (summary.error or summary.canceled or getattr(summary, "verification_skipped", False)):
+                self.cumulative_deleted_count += int(summary.delete_success_count)
+            self.current_run_delete_counted = True
+            self._sync_counter_vars()
         self._set_timer("-", "대기")
         self.cancel_button.configure(state="disabled")
         if summary.error:
@@ -860,8 +888,36 @@ class ArubaMmCleanupGui(tk.Tk):
         self.timer_state_var.set(state)
 
     def _reset_run_counters(self) -> None:
-        self.counter_vars["queried"].set("0")
-        self.counter_vars["deleted"].set("-")
+        self._ensure_cumulative_counters()
+        self.current_run_queried_count = 0
+        self.current_run_query_counted = False
+        self.current_run_delete_counted = False
+        self._sync_counter_vars()
+
+    def _count_current_query(self, count: int) -> None:
+        self._ensure_cumulative_counters()
+        self.current_run_queried_count = max(int(count), 0)
+        if not self.current_run_query_counted:
+            self.cumulative_queried_count += self.current_run_queried_count
+            self.current_run_query_counted = True
+        self._sync_counter_vars()
+
+    def _sync_counter_vars(self) -> None:
+        self._ensure_cumulative_counters()
+        self.counter_vars["queried"].set(str(self.cumulative_queried_count))
+        self.counter_vars["deleted"].set(str(self.cumulative_deleted_count))
+
+    def _ensure_cumulative_counters(self) -> None:
+        if not hasattr(self, "cumulative_queried_count"):
+            self.cumulative_queried_count = _safe_int(self.counter_vars["queried"].get())
+        if not hasattr(self, "cumulative_deleted_count"):
+            self.cumulative_deleted_count = _safe_int(self.counter_vars["deleted"].get())
+        if not hasattr(self, "current_run_queried_count"):
+            self.current_run_queried_count = 0
+        if not hasattr(self, "current_run_query_counted"):
+            self.current_run_query_counted = False
+        if not hasattr(self, "current_run_delete_counted"):
+            self.current_run_delete_counted = False
 
     def _sync_settings_visibility(self) -> None:
         if self.settings_frame is None:
@@ -992,6 +1048,39 @@ class ArubaMmCleanupGui(tk.Tk):
         self.history_row_counter += 1
         self.history_table.insert("", "end", iid=row_id, values=(run_at, mac, result, error), tags=tags)
 
+    def _copy_mac_from_table_event(self, event: tk.Event, table: ttk.Treeview, mac_column: str) -> None:
+        if table.identify_column(event.x) != mac_column:
+            return
+        row_id = table.identify_row(event.y)
+        if not row_id:
+            return
+        values = list(table.item(row_id, "values"))
+        column_index = int(mac_column.removeprefix("#")) - 1
+        if column_index < 0 or column_index >= len(values):
+            return
+        mac = str(values[column_index]).strip()
+        if not mac:
+            return
+        try:
+            self.clipboard_clear()
+            self.clipboard_append(mac)
+        except tk.TclError:
+            return
+        self._show_copy_notice(mac)
+
+    def _show_copy_notice(self, mac: str) -> None:
+        if self.copy_notice_after_id is not None:
+            try:
+                self.after_cancel(self.copy_notice_after_id)
+            except tk.TclError:
+                pass
+        self.copy_notice_var.set(f"MAC 복사됨: {mac}")
+        self.copy_notice_after_id = self.after(1000, self._hide_copy_notice)
+
+    def _hide_copy_notice(self) -> None:
+        self.copy_notice_var.set("")
+        self.copy_notice_after_id = None
+
     def _destroy_window(self) -> None:
         try:
             self.destroy()
@@ -1019,6 +1108,13 @@ def _merge_status_message(existing: str, update: str) -> str:
     if has_type_na_message:
         return TYPE_NA_MESSAGE
     return update
+
+
+def _safe_int(value: object) -> int:
+    try:
+        return int(str(value))
+    except (TypeError, ValueError):
+        return 0
 
 
 def main() -> int:

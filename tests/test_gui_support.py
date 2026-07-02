@@ -67,6 +67,11 @@ class FakeHistoryTable:
 
 
 class FakeTreeTable(FakeHistoryTable):
+    def __init__(self):
+        super().__init__()
+        self.click_column = "#1"
+        self.click_row = ""
+
     def exists(self, item):
         return item in self.rows
 
@@ -77,6 +82,21 @@ class FakeTreeTable(FakeHistoryTable):
         if option:
             return self.rows[item][option]
         return self.rows[item]
+
+    def identify_column(self, _x):
+        return self.click_column
+
+    def identify_row(self, _y):
+        if self.click_row:
+            return self.click_row
+        if self.order:
+            return self.order[0]
+        return ""
+
+
+class FakeClickEvent:
+    x = 1
+    y = 1
 
 
 class FakeLogText:
@@ -111,7 +131,14 @@ def make_headless_gui():
         "queried": FakeVar("7"),
         "deleted": FakeVar("3"),
     }
+    app.cumulative_queried_count = 7
+    app.cumulative_deleted_count = 3
+    app.current_run_queried_count = 0
+    app.current_run_query_counted = False
+    app.current_run_delete_counted = False
     app.status_var = FakeVar()
+    app.copy_notice_var = FakeVar("")
+    app.copy_notice_after_id = None
     app.cancel_button = FakeButton()
     app.manual_button = FakeButton()
     app.schedule_button = FakeButton()
@@ -125,8 +152,15 @@ def make_headless_gui():
     app.rows = []
     app.logs = []
     app.timers = []
+    app.clipboard_values = []
+    app.scheduled_callbacks = []
+    app.canceled_after_ids = []
     app.history_summaries = []
     app.reappeared_rows = []
+    app.clipboard_clear = lambda: app.clipboard_values.clear()
+    app.clipboard_append = lambda value: app.clipboard_values.append(value)
+    app.after = lambda ms, callback: app.scheduled_callbacks.append((ms, callback)) or f"after-{len(app.scheduled_callbacks)}"
+    app.after_cancel = lambda after_id: app.canceled_after_ids.append(after_id)
     app._set_row_status = lambda mac, status, error: app.rows.append((mac, status, error))
     app._log = lambda message: app.logs.append(message)
     app._set_timer = lambda value, state: app.timers.append((value, state))
@@ -202,14 +236,13 @@ def test_read_interval_rejects_invalid_values(value):
 
 def test_delete_progress_events_update_rows_without_confirmed_delete_count():
     app = make_headless_gui()
-    app.counter_vars["deleted"].set("-")
 
     app._handle_progress("delete_done", {"mac": "aa:bb:cc:00:00:01"})
     app._handle_progress("delete_done", {"mac": "aa:bb:cc:00:00:02"})
     app._handle_progress("delete_error", {"mac": "aa:bb:cc:00:00:03", "error": "Error"})
     app._handle_progress("delete_unknown", {"mac": "aa:bb:cc:00:00:04", "error": "timeout"})
 
-    assert app.counter_vars["deleted"].get() == "-"
+    assert app.counter_vars["deleted"].get() == "3"
     assert app.rows == [
         ("aa:bb:cc:00:00:01", "삭제 완료", ""),
         ("aa:bb:cc:00:00:02", "삭제 완료", ""),
@@ -218,7 +251,7 @@ def test_delete_progress_events_update_rows_without_confirmed_delete_count():
     ]
 
 
-def test_query_done_counts_unique_display_macs():
+def test_query_done_adds_unique_display_macs_to_cumulative_total():
     app = make_headless_gui()
     replaced = []
     app._replace_table = lambda macs, status, **kwargs: replaced.append((macs, status, kwargs))
@@ -231,7 +264,7 @@ def test_query_done_counts_unique_display_macs():
         },
     )
 
-    assert app.counter_vars["queried"].get() == "2"
+    assert app.counter_vars["queried"].get() == "9"
     assert replaced == [
         (["aa-bb-cc-00-00-01", "aa:bb:cc:00:00:01", "aa:bb:cc:00:00:02"], "삭제 대상", {"type_na_macs": []})
     ]
@@ -277,8 +310,10 @@ def test_running_state_resets_current_run_counters():
 
     app._set_running(True)
 
-    assert app.counter_vars["deleted"].get() == "-"
-    assert app.counter_vars["queried"].get() == "0"
+    assert app.counter_vars["deleted"].get() == "3"
+    assert app.counter_vars["queried"].get() == "7"
+    assert app.current_run_query_counted is False
+    assert app.current_run_delete_counted is False
     assert app.timers[-1] == ("실행 중", "조회/삭제 처리")
     assert app.cancel_button.config["state"] == "disabled"
 
@@ -391,7 +426,6 @@ def test_log_text_is_capped_to_max_lines():
 
 def test_summary_updates_simple_dashboard_cards_with_final_values():
     app = make_headless_gui()
-    app.counter_vars["deleted"].set("9")
     summary = SimpleNamespace(
         queried_count=4,
         target_macs=["aa:bb:cc:00:00:01", "aa:bb:cc:00:00:02", "aa:bb:cc:00:00:03"],
@@ -410,8 +444,38 @@ def test_summary_updates_simple_dashboard_cards_with_final_values():
 
     app._handle_summary(summary)
 
-    assert app.counter_vars["queried"].get() == "3"
-    assert app.counter_vars["deleted"].get() == "2"
+    assert app.counter_vars["queried"].get() == "10"
+    assert app.counter_vars["deleted"].get() == "5"
+
+
+def test_summary_does_not_double_count_query_progress():
+    app = make_headless_gui()
+    app._replace_table = lambda *_args, **_kwargs: None
+    app._handle_progress(
+        "query_done",
+        {
+            "count": 1,
+            "macs": ["aa:bb:cc:00:00:01"],
+        },
+    )
+    summary = SimpleNamespace(
+        queried_count=1,
+        target_macs=["aa:bb:cc:00:00:01"],
+        delete_success_count=1,
+        reappeared_count=0,
+        verification_skipped=False,
+        error="",
+        canceled=False,
+        reappeared_macs=[],
+        audit_path=None,
+        audit_error="",
+        history_error="",
+    )
+
+    app._handle_summary(summary)
+
+    assert app.counter_vars["queried"].get() == "8"
+    assert app.counter_vars["deleted"].get() == "4"
 
 
 @pytest.mark.parametrize(
@@ -436,5 +500,62 @@ def test_summary_leaves_confirmed_delete_unknown_without_verification(error, can
 
     app._handle_summary(summary)
 
-    assert app.counter_vars["queried"].get() == "1"
-    assert app.counter_vars["deleted"].get() == "-"
+    assert app.counter_vars["queried"].get() == "8"
+    assert app.counter_vars["deleted"].get() == "3"
+
+
+def test_result_mac_column_click_copies_mac_and_hides_notice():
+    app = make_headless_gui()
+    table = FakeTreeTable()
+    table.insert(
+        "",
+        "end",
+        iid="aa:bb:cc:00:00:01",
+        values=("aa:bb:cc:00:00:01", "삭제 대상", "2026-07-02 13:00:00", "", ""),
+    )
+
+    ArubaMmCleanupGui._copy_mac_from_table_event(app, FakeClickEvent(), table, "#1")
+
+    assert app.clipboard_values == ["aa:bb:cc:00:00:01"]
+    assert app.copy_notice_var.get() == "MAC 복사됨: aa:bb:cc:00:00:01"
+    assert app.scheduled_callbacks[0][0] == 1000
+
+    app.scheduled_callbacks[0][1]()
+
+    assert app.copy_notice_var.get() == ""
+    assert app.copy_notice_after_id is None
+
+
+def test_history_mac_column_click_copies_second_column_mac():
+    app = make_headless_gui()
+    table = FakeTreeTable()
+    table.click_column = "#2"
+    table.insert(
+        "",
+        "end",
+        iid="history-0",
+        values=("2026-07-02 13:00:00", "aa:bb:cc:00:00:02", "삭제 완료", ""),
+    )
+
+    ArubaMmCleanupGui._copy_mac_from_table_event(app, FakeClickEvent(), table, "#2")
+
+    assert app.clipboard_values == ["aa:bb:cc:00:00:02"]
+    assert app.copy_notice_var.get() == "MAC 복사됨: aa:bb:cc:00:00:02"
+
+
+def test_non_mac_column_click_does_not_copy_mac():
+    app = make_headless_gui()
+    table = FakeTreeTable()
+    table.click_column = "#2"
+    table.insert(
+        "",
+        "end",
+        iid="aa:bb:cc:00:00:01",
+        values=("aa:bb:cc:00:00:01", "삭제 대상", "2026-07-02 13:00:00", "", ""),
+    )
+
+    ArubaMmCleanupGui._copy_mac_from_table_event(app, FakeClickEvent(), table, "#1")
+
+    assert app.clipboard_values == []
+    assert app.copy_notice_var.get() == ""
+    assert app.scheduled_callbacks == []
