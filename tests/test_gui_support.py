@@ -98,7 +98,27 @@ class FakeTreeTable(FakeHistoryTable):
         return ""
 
 
+class DestroyedTreeTable(FakeTreeTable):
+    def get_children(self):
+        raise tk.TclError("invalid command name")
+
+    def delete(self, *items):
+        raise tk.TclError("invalid command name")
+
+    def insert(self, _parent, _index, iid, values, tags=()):
+        raise tk.TclError("invalid command name")
+
+    def exists(self, item):
+        raise tk.TclError("invalid command name")
+
+    def item(self, item, option=None, **kwargs):
+        raise tk.TclError("invalid command name")
+
+
 class DestroyedHistoryTable(FakeHistoryTable):
+    def get_children(self):
+        raise tk.TclError("invalid command name")
+
     def delete(self, *items):
         raise tk.TclError("invalid command name")
 
@@ -460,6 +480,27 @@ def test_set_all_pending_status_skips_malformed_rows_and_updates_valid_rows():
 
     assert app.table.rows["bad-row"]["values"] == ("bad-row",)
     assert app.table.rows["aa:bb:cc:00:00:01"]["values"][1] == "취소됨"
+
+
+def test_result_table_updates_ignore_destroyed_table():
+    app = make_headless_gui()
+    app.table = DestroyedTreeTable()
+
+    ArubaMmCleanupGui._replace_table(app, ["aa:bb:cc:00:00:01"], "삭제 대상")
+    ArubaMmCleanupGui._set_row_status(app, "aa:bb:cc:00:00:01", "삭제 완료", "")
+    ArubaMmCleanupGui._mark_reappeared_rows(app, ["aa:bb:cc:00:00:01"])
+    ArubaMmCleanupGui._set_all_pending_status(app, "취소됨")
+
+    assert app.table.rows == {}
+
+
+def test_history_cap_ignores_destroyed_history_table():
+    app = make_headless_gui()
+    app.history_table = DestroyedHistoryTable()
+
+    ArubaMmCleanupGui._cap_history_rows(app)
+
+    assert app.history_table.rows == {}
 
 
 def test_running_state_resets_current_run_counters():

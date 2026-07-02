@@ -899,43 +899,80 @@ class ArubaMmCleanupGui(tk.Tk):
         self._append_history_rows(summary)
 
     def _replace_table(self, macs: list[str], status: str, *, type_na_macs: Optional[list[str]] = None) -> None:
-        self.table.delete(*self.table.get_children())
+        try:
+            self.table.delete(*self.table.get_children())
+        except tk.TclError:
+            return
         now = time.strftime("%Y-%m-%d %H:%M:%S")
         type_na_set = set(_unique_display_macs(type_na_macs or []))
         for mac in _unique_display_macs(macs):
             message = TYPE_NA_MESSAGE if mac in type_na_set else ""
-            self.table.insert("", "end", iid=mac, values=(mac, status, now, "", message))
+            try:
+                self.table.insert("", "end", iid=mac, values=(mac, status, now, "", message))
+            except tk.TclError:
+                return
 
     def _set_row_status(self, mac: str, status: str, error: str) -> None:
-        if not mac or not self.table.exists(mac):
+        try:
+            if not mac or not self.table.exists(mac):
+                return
+            values = list(self.table.item(mac, "values"))
+        except (tk.TclError, TypeError):
             return
-        values = list(self.table.item(mac, "values"))
         if len(values) < 5:
             return
         values[1] = status
         if status in {"삭제 완료", "삭제 실패", "확인 필요", "재조회됨"}:
             values[3] = time.strftime("%Y-%m-%d %H:%M:%S")
         values[4] = _merge_status_message(str(values[4] or ""), error)
-        self.table.item(mac, values=values)
-        self.table.item(mac, tags=("reappeared",) if status == "재조회됨" else ())
+        try:
+            self.table.item(mac, values=values)
+            self.table.item(mac, tags=("reappeared",) if status == "재조회됨" else ())
+        except tk.TclError:
+            return
 
     def _mark_reappeared_rows(self, macs: list[str]) -> None:
         now = time.strftime("%Y-%m-%d %H:%M:%S")
         error = "삭제 성공 후 검증 조회에서 다시 발견"
         for mac in macs:
-            if self.table.exists(mac):
+            try:
+                exists = self.table.exists(mac)
+            except tk.TclError:
+                return
+            if exists:
                 self._set_row_status(mac, "재조회됨", error)
             else:
-                self.table.insert("", "end", iid=mac, values=(mac, "재조회됨", now, now, error), tags=("reappeared",))
+                try:
+                    self.table.insert(
+                        "",
+                        "end",
+                        iid=mac,
+                        values=(mac, "재조회됨", now, now, error),
+                        tags=("reappeared",),
+                    )
+                except tk.TclError:
+                    return
 
     def _set_all_pending_status(self, status: str) -> None:
-        for item_id in self.table.get_children():
-            values = list(self.table.item(item_id, "values"))
+        try:
+            item_ids = self.table.get_children()
+        except tk.TclError:
+            return
+        for item_id in item_ids:
+            try:
+                values = list(self.table.item(item_id, "values"))
+            except tk.TclError:
+                return
+            except TypeError:
+                continue
             if len(values) < 2:
                 continue
             if values[1] in {"삭제 대상", "삭제 중"}:
                 values[1] = status
-                self.table.item(item_id, values=values)
+                try:
+                    self.table.item(item_id, values=values)
+                except tk.TclError:
+                    return
 
     def _set_running(self, running: bool) -> None:
         self.is_running = running
@@ -1027,10 +1064,16 @@ class ArubaMmCleanupGui(tk.Tk):
         self._cap_history_rows()
 
     def _cap_history_rows(self) -> None:
-        children = self.history_table.get_children()
+        try:
+            children = self.history_table.get_children()
+        except tk.TclError:
+            return
         overflow = len(children) - MAX_HISTORY_ROWS
         if overflow > 0:
-            self.history_table.delete(*children[:overflow])
+            try:
+                self.history_table.delete(*children[:overflow])
+            except tk.TclError:
+                return
 
     def _log(self, message: str) -> None:
         try:
