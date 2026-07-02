@@ -1092,7 +1092,10 @@ class ArubaMmCleanupGui(tk.Tk):
         if not row_id:
             return
         values = list(table.item(row_id, "values"))
-        column_index = int(mac_column.removeprefix("#")) - 1
+        try:
+            column_index = int(mac_column.removeprefix("#")) - 1
+        except (AttributeError, ValueError):
+            return
         if column_index < 0 or column_index >= len(values):
             return
         mac = str(values[column_index]).strip()

@@ -674,3 +674,23 @@ def test_non_mac_column_click_does_not_copy_mac():
     assert app.copy_notice_mac_var.get() == ""
     assert app.copy_notice_frame.hidden is True
     assert app.scheduled_callbacks == []
+
+
+def test_invalid_mac_column_identifier_does_not_copy_mac():
+    app = make_headless_gui()
+    table = FakeTreeTable()
+    table.click_column = "MAC"
+    table.insert(
+        "",
+        "end",
+        iid="aa:bb:cc:00:00:01",
+        values=("aa:bb:cc:00:00:01", "삭제 대상", "2026-07-02 13:00:00", "", ""),
+    )
+
+    ArubaMmCleanupGui._copy_mac_from_table_event(app, FakeClickEvent(), table, "MAC")
+
+    assert app.clipboard_values == []
+    assert app.copy_notice_title_var.get() == ""
+    assert app.copy_notice_mac_var.get() == ""
+    assert app.copy_notice_frame.hidden is True
+    assert app.scheduled_callbacks == []
