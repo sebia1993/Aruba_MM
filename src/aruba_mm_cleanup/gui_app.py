@@ -724,7 +724,7 @@ class ArubaMmCleanupGui(tk.Tk):
             timeout=timeout,
             delete_delay_seconds=0,
         )
-        output_dir = Path(self.output_dir_var.get().strip() or DEFAULT_OUTPUT_DIR)
+        output_dir = Path(self.output_dir_var.get().strip() or DEFAULT_OUTPUT_DIR).expanduser()
         return config, settings, output_dir
 
     def _read_interval(self) -> int:

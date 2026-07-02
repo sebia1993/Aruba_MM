@@ -2,6 +2,7 @@ import json
 import queue
 import threading
 import time
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -232,6 +233,15 @@ def test_read_inputs_uses_immediate_delete_and_device_timeout():
     assert settings.timeout == 15
     assert settings.delete_delay_seconds == 0
     assert str(output_dir) == "/tmp/aruba-mm-cleanup"
+
+
+def test_read_inputs_expands_user_home_output_dir():
+    app = make_input_gui()
+    app.output_dir_var.set("~/aruba-mm-cleanup")
+
+    _config, _settings, output_dir = ArubaMmCleanupGui._read_inputs(app)
+
+    assert output_dir == Path.home() / "aruba-mm-cleanup"
 
 
 def test_read_inputs_reports_clear_timeout_errors():
