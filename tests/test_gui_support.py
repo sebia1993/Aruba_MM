@@ -52,6 +52,27 @@ class FailingSetVar(FakeVar):
         raise tk.TclError("invalid command name")
 
 
+class BadErrorText(Exception):
+    def __str__(self):
+        raise RuntimeError("bad error text")
+
+    def __repr__(self):
+        raise RuntimeError("bad error repr")
+
+
+class BadValueErrorText(ValueError):
+    def __str__(self):
+        raise RuntimeError("bad error text")
+
+    def __repr__(self):
+        raise RuntimeError("bad error repr")
+
+
+class BadQueueItem:
+    def __iter__(self):
+        raise BadValueErrorText()
+
+
 class FakeButton:
     def __init__(self):
         self.config = {}
@@ -964,6 +985,37 @@ def test_drain_events_logs_malformed_queue_item_and_continues():
     assert app.scheduled_callbacks[-1][0] == 150
 
 
+def test_drain_events_logs_unprintable_malformed_queue_error_and_continues():
+    app = make_headless_gui()
+    app.scheduler_running = True
+    app.event_queue.put(BadQueueItem())
+    app.event_queue.put(("scheduler_stopped", None))
+
+    ArubaMmCleanupGui._drain_events(app)
+
+    assert "WARNING: 이벤트 형식 오류 - BadValueErrorText" in app.logs
+    assert app.scheduler_running is False
+    assert app.timers[-1] == ("-", "대기")
+
+
+def test_drain_events_logs_unprintable_event_processing_error_and_continues():
+    app = make_headless_gui()
+    app.scheduler_running = True
+
+    def fail_summary(_payload):
+        raise BadErrorText()
+
+    app._handle_summary = fail_summary
+    app.event_queue.put(("summary", object()))
+    app.event_queue.put(("scheduler_stopped", None))
+
+    ArubaMmCleanupGui._drain_events(app)
+
+    assert "WARNING: 이벤트 처리 실패(summary) - BadErrorText" in app.logs
+    assert app.scheduler_running is False
+    assert app.timers[-1] == ("-", "대기")
+
+
 def test_scheduler_stopped_button_failure_still_updates_timer():
     app = make_headless_gui()
     app.scheduler_running = True
@@ -1131,6 +1183,20 @@ def test_close_runner_session_reports_manual_close_failure():
     assert app.event_queue.get_nowait() == (
         "progress",
         ("warning", {"message": "session close failed: close failed", "reason": "manual"}),
+    )
+    assert app.event_queue.empty()
+
+
+def test_close_runner_session_reports_unprintable_manual_close_failure():
+    app = make_headless_gui()
+    app.runner_lock = threading.Lock()
+    app.runner = SimpleNamespace(close_session=lambda **_kwargs: (_ for _ in ()).throw(BadErrorText()))
+
+    ArubaMmCleanupGui._close_runner_session(app, reason="manual", enqueue_progress=True)
+
+    assert app.event_queue.get_nowait() == (
+        "progress",
+        ("warning", {"message": "session close failed: BadErrorText", "reason": "manual"}),
     )
     assert app.event_queue.empty()
 

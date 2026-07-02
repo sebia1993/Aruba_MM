@@ -708,11 +708,12 @@ class ArubaMmCleanupGui(tk.Tk):
                 self.runner.close_session(progress_callback=progress, reason=reason)
             except Exception as exc:
                 if enqueue_progress:
+                    error = _safe_text(exc) or exc.__class__.__name__
                     self._enqueue_event(
                         "progress",
                         (
                             "warning",
-                            {"message": f"session close failed: {exc}", "reason": reason},
+                            {"message": f"session close failed: {error}", "reason": reason},
                         ),
                     )
 
@@ -803,7 +804,8 @@ class ArubaMmCleanupGui(tk.Tk):
                     event, payload = queue_item
                 except (TypeError, ValueError) as exc:
                     try:
-                        self._log(f"WARNING: 이벤트 형식 오류 - {exc}")
+                        error = _safe_text(exc) or exc.__class__.__name__
+                        self._log(f"WARNING: 이벤트 형식 오류 - {error}")
                     except Exception:
                         pass
                     continue
@@ -837,7 +839,8 @@ class ArubaMmCleanupGui(tk.Tk):
                         self._sync_settings_visibility()
                 except Exception as exc:
                     try:
-                        self._log(f"WARNING: 이벤트 처리 실패({event}) - {exc}")
+                        error = _safe_text(exc) or exc.__class__.__name__
+                        self._log(f"WARNING: 이벤트 처리 실패({event}) - {error}")
                     except Exception:
                         pass
         except queue.Empty:
