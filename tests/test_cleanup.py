@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from aruba_mm_cleanup.cleanup import MmCleanupRunner, build_delete_command, build_query_command
+from aruba_mm_cleanup.cleanup import MmCleanupRunner, build_delete_command, build_query_command, classify_delete_response
 from aruba_mm_cleanup.models import CleanupSettings, MmConnectionConfig
 
 
@@ -59,7 +59,9 @@ def test_run_once_deletes_snapshot_and_verifies_remaining(tmp_path):
     assert summary.delete_success_count == 2
     assert summary.delete_failure_count == 0
     assert summary.remaining_count == 0
+    assert [item.status for item in summary.delete_results] == ["verified_deleted", "verified_deleted"]
     assert summary.audit_path and summary.audit_path.exists()
+    assert summary.history_path and summary.history_path.exists()
     assert connections == []
     assert connection.disconnected is True
     assert connection.commands == [
@@ -129,10 +131,11 @@ def test_run_once_flags_successfully_deleted_mac_that_reappears(tmp_path):
         progress_callback=lambda event, payload: events.append((event, payload)),
     )
 
-    assert summary.delete_success_count == 1
-    assert summary.delete_failure_count == 1
+    assert summary.delete_success_count == 0
+    assert summary.delete_failure_count == 2
     assert summary.remaining_count == 2
     assert summary.reappeared_count == 1
+    assert summary.delete_results[0].status == "reappeared"
     assert summary.reappeared_macs == ["aa:bb:cc:00:00:01"]
     assert any(
         event == "reappeared_macs" and payload["macs"] == ["aa:bb:cc:00:00:01"]
@@ -166,6 +169,63 @@ def test_run_once_can_cancel_during_countdown(tmp_path):
     assert summary.delete_results == []
     assert summary.remaining_count == 1
     assert query_conn.disconnected is True
+
+
+def test_run_once_can_cancel_during_delete_loop_before_next_mac(tmp_path):
+    first_query = "10.1.1.10 aa:bb:cc:00:00:01 user-a profiling\n10.1.1.11 aa:bb:cc:00:00:02 user-b profiling"
+    connection = FakeConnection(
+        responses={
+            "no paging": "",
+            "show global-user-table list role profiling": [first_query],
+            "aaa user delete mac aa:bb:cc:00:00:01": "User deleted",
+        }
+    )
+    runner = MmCleanupRunner(
+        connection_factory=lambda _config, _timeout: connection,
+        sleep_func=lambda _seconds: None,
+    )
+    checks = iter([False, False, True])
+
+    summary = runner.run_once(
+        MmConnectionConfig(host="192.0.2.10", username="admin", password="secret"),
+        CleanupSettings(role="profiling", timeout=5, delete_delay_seconds=0),
+        output_dir=tmp_path,
+        should_cancel=lambda: next(checks, True),
+    )
+
+    assert summary.canceled is True
+    assert summary.verification_skipped is True
+    assert len(summary.delete_results) == 1
+    assert connection.commands.count("aaa user delete mac aa:bb:cc:00:00:01") == 1
+    assert "aaa user delete mac aa:bb:cc:00:00:02" not in connection.commands
+    assert connection.commands.count("show global-user-table list role profiling") == 1
+
+
+def test_run_once_skips_verify_when_canceled_after_delete_loop(tmp_path):
+    first_query = "10.1.1.10 aa:bb:cc:00:00:01 user-a profiling"
+    connection = FakeConnection(
+        responses={
+            "no paging": "",
+            "show global-user-table list role profiling": [first_query],
+            "aaa user delete mac aa:bb:cc:00:00:01": "User deleted",
+        }
+    )
+    runner = MmCleanupRunner(
+        connection_factory=lambda _config, _timeout: connection,
+        sleep_func=lambda _seconds: None,
+    )
+    checks = iter([False, False, True])
+
+    summary = runner.run_once(
+        MmConnectionConfig(host="192.0.2.10", username="admin", password="secret"),
+        CleanupSettings(role="profiling", timeout=5, delete_delay_seconds=0),
+        output_dir=tmp_path,
+        should_cancel=lambda: next(checks, True),
+    )
+
+    assert summary.canceled is True
+    assert summary.verification_skipped is True
+    assert connection.commands.count("show global-user-table list role profiling") == 1
 
 
 def test_zero_query_writes_audit_without_delete(tmp_path):
@@ -293,6 +353,19 @@ def test_delete_command_exception_is_unknown_without_retry():
     assert connection.commands.count(command) == 1
     assert not any(event == "session_reconnect_start" for event, _payload in events)
     assert any(event == "delete_unknown" for event, _payload in events)
+
+
+def test_classify_delete_response_handles_failure_unknown_and_success():
+    assert classify_delete_response("User deleted") == ("deleted", "")
+    assert classify_delete_response("Permission denied") == ("failed", "Permission denied")
+    assert classify_delete_response("Invalid input detected at '^' marker.") == (
+        "failed",
+        "Invalid input detected at '^' marker.",
+    )
+    assert classify_delete_response("") == ("unknown", "확인 필요: 삭제 명령 응답이 비어 있음")
+    status, error = classify_delete_response("aaa user delete mac aa:bb:cc:00:00:01")
+    assert status == "unknown"
+    assert "판정 불가" in error
 
 
 def test_audit_save_failure_does_not_break_summary(tmp_path):

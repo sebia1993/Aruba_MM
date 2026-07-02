@@ -28,9 +28,11 @@ SHA256 sidecar는 생성하거나 GitHub Release asset으로 업로드하지 않
 ## 검증 명령
 
 ```powershell
+python -m pip install -e ".[dev]" -c .\constraints.txt
+python -m pip check
 python -m pytest
 python -m compileall src
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\validate.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\build_windows_gui_exe.ps1
-python .\tools\verify_release_package.py --dist .\dist --smoke-cli
+python .\tools\verify_release_package.py --dist .\dist --smoke-cli --smoke-gui --require-cli-smoke --require-gui-smoke
 ```

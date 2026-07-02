@@ -29,7 +29,8 @@ function Wait-ForReadableFile {
 }
 
 Write-Host "Installing runtime and build dependencies..."
-& $PythonExe -m pip install -e ".[dev]"
+& $PythonExe -m pip install -e ".[dev]" -c ".\constraints.txt"
+& $PythonExe -m pip check
 
 $version = & $PythonExe -c "from aruba_mm_cleanup import __version__; print(__version__)"
 $guiExeName = "ArubaMMCleanupGUI"
@@ -106,4 +107,3 @@ Write-Host "Build completed."
 Write-Host "GUI executable: $distGuiExe"
 Write-Host "CLI executable: $distCliExe"
 Write-Host "Release zip: $releaseZip"
-

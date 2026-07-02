@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from aruba_mm_cleanup.parser import normalize_mac, parse_global_user_table
+from aruba_mm_cleanup.parser import normalize_mac, parse_global_user_table, parse_global_user_table_explained
 
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures"
@@ -89,3 +89,19 @@ def test_parse_sanitized_aruba_dotted_fixture_ignores_ap_radio_mac():
         "aa:bb:cc:00:30:02",
     ]
     assert "66:77:88:99:aa:bb" not in [entry.mac for entry in entries]
+
+
+def test_parse_explained_records_selected_and_ignored_reasons():
+    output = (FIXTURE_DIR / "aruba_global_user_table_mixed_reasoned.txt").read_text(encoding="utf-8")
+
+    result = parse_global_user_table_explained(output, role_filter="profiling")
+
+    assert [entry.mac for entry in result.entries] == [
+        "aa:bb:cc:00:40:01",
+        "aa:bb:cc:00:40:03",
+    ]
+    decisions = {(item.action, item.reason, item.mac) for item in result.decisions}
+    assert ("selected", "selected_identity_mac_before_role", "aa:bb:cc:00:40:01") in decisions
+    assert ("ignored", "role_mismatch", "aa:bb:cc:00:40:02") in decisions
+    assert ("ignored", "duplicate_user_mac", "aa:bb:cc:00:40:03") in decisions
+    assert any(item.action == "ignored" and item.reason == "role_not_found" for item in result.decisions)

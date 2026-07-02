@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import os
 import queue
 import threading
 import time
@@ -21,6 +23,9 @@ DEFAULT_INTERVAL_SECONDS = 300
 MIN_INTERVAL_SECONDS = 60
 DELETE_DELAY_SECONDS = 60
 MAX_HISTORY_ROWS = 500
+MAX_LOG_LINES = 1000
+HISTORY_FILE_NAME = "deletion_history.jsonl"
+SHUTDOWN_GRACE_MS = 250
 
 BG = "#f4f4f4"
 PANEL = "#ffffff"
@@ -57,10 +62,14 @@ class ArubaMmCleanupGui(tk.Tk):
         self.scheduler_stop_event = threading.Event()
         self.is_running = False
         self.scheduler_running = False
+        self.closing = False
         self.runner = MmCleanupRunner(persistent_session=True)
         self.runner_lock = threading.Lock()
+        self.session_close_worker: Optional[threading.Thread] = None
         self.history_row_counter = 0
         self.settings_frame: Optional[tk.Frame] = None
+        self.loaded_history_dir: Optional[Path] = None
+        self._drain_after_id: Optional[str] = None
 
         self.host_var = tk.StringVar()
         self.port_var = tk.StringVar(value="22")
@@ -84,8 +93,9 @@ class ArubaMmCleanupGui(tk.Tk):
 
         self._build_styles()
         self._build_layout()
+        self._load_history_from_output_dir(DEFAULT_OUTPUT_DIR)
         self.protocol("WM_DELETE_WINDOW", self.on_close)
-        self.after(150, self._drain_events)
+        self._drain_after_id = self.after(150, self._drain_events)
 
     def _build_styles(self) -> None:
         style = ttk.Style(self)
@@ -485,9 +495,10 @@ class ArubaMmCleanupGui(tk.Tk):
         selected = filedialog.askdirectory(initialdir=self.output_dir_var.get() or str(DEFAULT_OUTPUT_DIR))
         if selected:
             self.output_dir_var.set(selected)
+            self._load_history_from_output_dir(Path(selected), force=True)
 
     def start_manual_run(self) -> None:
-        if self.is_running:
+        if self.closing or self.is_running:
             return
         if self.scheduler_running:
             self._log("주기 실행 중에는 1회 실행을 시작할 수 없습니다.")
@@ -497,6 +508,7 @@ class ArubaMmCleanupGui(tk.Tk):
         except ValueError as exc:
             messagebox.showerror("입력 오류", str(exc))
             return
+        self._load_history_from_output_dir(output_dir)
         self.cancel_event.clear()
         self._set_running(True)
         self.worker = threading.Thread(
@@ -507,7 +519,7 @@ class ArubaMmCleanupGui(tk.Tk):
         self.worker.start()
 
     def start_scheduler(self) -> None:
-        if self.scheduler_running:
+        if self.closing or self.scheduler_running:
             return
         if self.is_running:
             self._log("실행 중에는 주기 실행을 시작할 수 없습니다.")
@@ -518,6 +530,7 @@ class ArubaMmCleanupGui(tk.Tk):
         except ValueError as exc:
             messagebox.showerror("입력 오류", str(exc))
             return
+        self._load_history_from_output_dir(output_dir)
         self.scheduler_stop_event.clear()
         self.scheduler_running = True
         self.manual_button.configure(state="disabled")
@@ -534,6 +547,7 @@ class ArubaMmCleanupGui(tk.Tk):
 
     def stop_scheduler(self) -> None:
         self.scheduler_stop_event.set()
+        self.cancel_event.set()
         self.scheduler_running = False
         self.manual_button.configure(state="disabled" if self.is_running else "normal")
         self.schedule_button.configure(state="disabled" if self.is_running else "normal")
@@ -547,18 +561,29 @@ class ArubaMmCleanupGui(tk.Tk):
         self._log("이번 삭제 취소 요청")
 
     def disconnect_session(self) -> None:
+        if self.closing:
+            return
         if self.is_running:
             self._log("실행 중에는 세션 연결 해제를 건너뜁니다.")
             return
-        self._close_runner_session(reason="manual", enqueue_progress=True)
+        self._start_session_close(reason="manual", enqueue_progress=True)
         self.status_var.set("세션 연결 해제")
         self._log("SESSION DISCONNECT REQUEST")
 
     def on_close(self) -> None:
+        if self.closing:
+            return
+        self.closing = True
         self.scheduler_stop_event.set()
         self.cancel_event.set()
-        self._close_runner_session(reason="app_close", enqueue_progress=False)
-        self.destroy()
+        if self._drain_after_id is not None:
+            try:
+                self.after_cancel(self._drain_after_id)
+            except tk.TclError:
+                pass
+            self._drain_after_id = None
+        self._start_session_close(reason="app_close", enqueue_progress=False)
+        self.after(SHUTDOWN_GRACE_MS, self._destroy_window)
 
     def _scheduler_loop(
         self,
@@ -569,27 +594,28 @@ class ArubaMmCleanupGui(tk.Tk):
     ) -> None:
         while not self.scheduler_stop_event.is_set():
             self.cancel_event.clear()
-            self.event_queue.put(("running", True))
+            self._enqueue_event("running", True)
             try:
                 self._run_summary(config, settings, output_dir)
             finally:
-                self.event_queue.put(("running", False))
+                self._enqueue_event("running", False)
             for remaining in range(interval, 0, -1):
                 if self.scheduler_stop_event.is_set():
                     break
-                self.event_queue.put(("next_run", remaining))
-                time.sleep(1)
-        self.event_queue.put(("scheduler_stopped", None))
+                self._enqueue_event("next_run", remaining)
+                if self.scheduler_stop_event.wait(1):
+                    break
+        self._enqueue_event("scheduler_stopped", None)
 
     def _run_once_worker(self, config: MmConnectionConfig, settings: CleanupSettings, output_dir: Path) -> None:
         try:
             self._run_summary(config, settings, output_dir)
         finally:
-            self.event_queue.put(("running", False))
+            self._enqueue_event("running", False)
 
     def _run_summary(self, config: MmConnectionConfig, settings: CleanupSettings, output_dir: Path) -> None:
         def progress(event: str, payload: dict[str, object]) -> None:
-            self.event_queue.put(("progress", (event, payload)))
+            self._enqueue_event("progress", (event, payload))
 
         with self.runner_lock:
             summary = self.runner.run_once(
@@ -597,16 +623,35 @@ class ArubaMmCleanupGui(tk.Tk):
                 settings,
                 output_dir=output_dir,
                 progress_callback=progress,
-                should_cancel=self.cancel_event.is_set,
+                should_cancel=self._should_cancel_run,
             )
-        self.event_queue.put(("summary", summary))
+        self._enqueue_event("summary", summary)
 
     def _close_runner_session(self, *, reason: str, enqueue_progress: bool) -> None:
         progress = None
         if enqueue_progress:
-            progress = lambda event, payload: self.event_queue.put(("progress", (event, payload)))
+            progress = lambda event, payload: self._enqueue_event("progress", (event, payload))
         with self.runner_lock:
             self.runner.close_session(progress_callback=progress, reason=reason)
+
+    def _start_session_close(self, *, reason: str, enqueue_progress: bool) -> None:
+        if self.session_close_worker is not None and self.session_close_worker.is_alive():
+            return
+        self.session_close_worker = threading.Thread(
+            target=self._close_runner_session,
+            kwargs={"reason": reason, "enqueue_progress": enqueue_progress},
+            daemon=True,
+        )
+        self.session_close_worker.start()
+
+    def _should_cancel_run(self) -> bool:
+        return self.cancel_event.is_set() or self.scheduler_stop_event.is_set() or self.closing
+
+    def _enqueue_event(self, event: str, payload: object) -> bool:
+        if self.closing:
+            return False
+        self.event_queue.put((event, payload))
+        return True
 
     def _read_inputs(self) -> tuple[MmConnectionConfig, CleanupSettings, Path]:
         host = self.host_var.get().strip()
@@ -648,6 +693,8 @@ class ArubaMmCleanupGui(tk.Tk):
             raise ValueError("주기(초)는 숫자로 입력하세요.") from exc
 
     def _drain_events(self) -> None:
+        if self.closing:
+            return
         try:
             while True:
                 event, payload = self.event_queue.get_nowait()
@@ -669,7 +716,8 @@ class ArubaMmCleanupGui(tk.Tk):
                     self._sync_settings_visibility()
         except queue.Empty:
             pass
-        self.after(150, self._drain_events)
+        if not self.closing:
+            self._drain_after_id = self.after(150, self._drain_events)
 
     def _handle_progress(self, event: str, payload: dict[str, object]) -> None:
         if event == "connect_start":
@@ -758,6 +806,8 @@ class ArubaMmCleanupGui(tk.Tk):
             self._log(f"AUDIT: {summary.audit_path}")
         if summary.audit_error:
             self._log(f"AUDIT WARNING: {summary.audit_error}")
+        if summary.history_error:
+            self._log(f"HISTORY WARNING: {summary.history_error}")
         self._append_history_rows(summary)
 
     def _replace_table(self, macs: list[str], status: str) -> None:
@@ -835,19 +885,17 @@ class ArubaMmCleanupGui(tk.Tk):
         run_at = summary.started_at.strftime("%Y-%m-%d %H:%M:%S")
         reappeared_macs = set(summary.reappeared_macs)
         for item in summary.delete_results:
-            tags = ()
-            error = item.error
-            if item.mac in reappeared_macs:
-                result = "재조회됨"
-                error = error or "삭제 성공 후 검증 조회에서 다시 발견"
-                tags = ("reappeared",)
-            elif item.status == "unknown":
-                result = "확인 필요"
-            else:
-                result = "삭제 완료" if item.success else "삭제 실패"
-            row_id = f"history-{self.history_row_counter}"
-            self.history_row_counter += 1
-            self.history_table.insert("", "end", iid=row_id, values=(run_at, item.mac, result, error), tags=tags)
+            result, error, tags = self._history_row_display(
+                {
+                    "mac": item.mac,
+                    "result": "",
+                    "status": item.status,
+                    "success": item.success,
+                    "error": item.error,
+                    "reappeared": item.mac in reappeared_macs or item.status == "reappeared",
+                }
+            )
+            self._insert_history_row(run_at, item.mac, result, error, tags=tags)
         self._cap_history_rows()
 
     def _cap_history_rows(self) -> None:
@@ -859,8 +907,15 @@ class ArubaMmCleanupGui(tk.Tk):
     def _log(self, message: str) -> None:
         self.log_text.configure(state="normal")
         self.log_text.insert("end", f"{time.strftime('%H:%M:%S')} {message}\n")
+        self._cap_log_lines()
         self.log_text.see("end")
         self.log_text.configure(state="disabled")
+
+    def _cap_log_lines(self) -> None:
+        line_count = int(self.log_text.index("end-1c").split(".")[0])
+        overflow = line_count - MAX_LOG_LINES
+        if overflow > 0:
+            self.log_text.delete("1.0", f"{overflow + 1}.0")
 
     def clear_log(self) -> None:
         self.log_text.configure(state="normal")
@@ -869,9 +924,101 @@ class ArubaMmCleanupGui(tk.Tk):
 
     def clear_history(self) -> None:
         self.history_table.delete(*self.history_table.get_children())
+        self.history_row_counter = 0
+
+    def _load_history_from_output_dir(self, output_dir: Path, *, force: bool = False) -> None:
+        output_dir = output_dir.expanduser()
+        if not force and self.loaded_history_dir == output_dir:
+            return
+        self.loaded_history_dir = output_dir
+        if not hasattr(self, "history_table"):
+            return
+        records = self._read_history_records(output_dir)
+        self.history_table.delete(*self.history_table.get_children())
+        self.history_row_counter = 0
+        for record in records[-MAX_HISTORY_ROWS:]:
+            run_at = str(record.get("run_at", ""))[:19].replace("T", " ")
+            mac = str(record.get("mac", ""))
+            result, error, tags = self._history_row_display(record)
+            self._insert_history_row(run_at, mac, result, error, tags=tags)
+
+    def _read_history_records(self, output_dir: Path) -> list[dict[str, object]]:
+        jsonl_path = output_dir / HISTORY_FILE_NAME
+        if jsonl_path.exists():
+            records: list[dict[str, object]] = []
+            with jsonl_path.open(encoding="utf-8") as handle:
+                for line in handle:
+                    try:
+                        record = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if isinstance(record, dict) and record.get("mac"):
+                        records.append(record)
+            return records
+        records = []
+        for audit_path in sorted(output_dir.glob("*/cleanup_summary.json")):
+            try:
+                audit = json.loads(audit_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            run_at = str(audit.get("started_at", ""))
+            reappeared = set(audit.get("reappeared_macs") or [])
+            for item in audit.get("delete_results") or []:
+                if not isinstance(item, dict) or not item.get("mac"):
+                    continue
+                record = dict(item)
+                record["run_at"] = run_at
+                record["reappeared"] = item.get("mac") in reappeared or item.get("status") == "reappeared"
+                records.append(record)
+        return records
+
+    def _history_row_display(self, record: dict[str, object]) -> tuple[str, str, tuple[str, ...]]:
+        status = str(record.get("status") or "")
+        result = str(record.get("result") or "")
+        error = str(record.get("error") or "")
+        reappeared = bool(record.get("reappeared")) or status == "reappeared"
+        if reappeared:
+            return "재조회됨", error or "삭제 성공 후 검증 조회에서 다시 발견", ("reappeared",)
+        if result:
+            return result, error, ()
+        if status == "unknown":
+            return "확인 필요", error, ()
+        if bool(record.get("success")):
+            return "삭제 완료", error, ()
+        return "삭제 실패", error, ()
+
+    def _insert_history_row(
+        self,
+        run_at: str,
+        mac: str,
+        result: str,
+        error: str,
+        *,
+        tags: tuple[str, ...] = (),
+    ) -> None:
+        row_id = f"history-{self.history_row_counter}"
+        self.history_row_counter += 1
+        self.history_table.insert("", "end", iid=row_id, values=(run_at, mac, result, error), tags=tags)
+
+    def _destroy_window(self) -> None:
+        try:
+            self.destroy()
+        except tk.TclError:
+            pass
 
 
 def main() -> int:
+    if os.environ.get("ARUBA_MM_CLEANUP_GUI_SMOKE") == "1":
+        app = ArubaMmCleanupGui()
+        app.update_idletasks()
+        app.closing = True
+        if app._drain_after_id is not None:
+            try:
+                app.after_cancel(app._drain_after_id)
+            except tk.TclError:
+                pass
+        app.destroy()
+        return 0
     app = ArubaMmCleanupGui()
     app.mainloop()
     return 0

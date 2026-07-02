@@ -1,4 +1,7 @@
-import inspect
+import json
+import queue
+import threading
+import time
 from types import SimpleNamespace
 
 from aruba_mm_cleanup import __version__
@@ -12,8 +15,11 @@ from aruba_mm_cleanup.gui_app import (
     DEFAULT_INTERVAL_SECONDS,
     DEFAULT_ROLE,
     DELETE_DELAY_SECONDS,
+    HISTORY_FILE_NAME,
+    MAX_LOG_LINES,
     MAX_HISTORY_ROWS,
     MIN_INTERVAL_SECONDS,
+    SHUTDOWN_GRACE_MS,
     TEXT,
     ArubaMmCleanupGui,
 )
@@ -38,6 +44,52 @@ class FakeButton:
         self.config.update(kwargs)
 
 
+class FakeHistoryTable:
+    def __init__(self):
+        self.rows = {}
+        self.order = []
+
+    def insert(self, _parent, _index, iid, values, tags=()):
+        self.rows[iid] = {"values": values, "tags": tags}
+        self.order.append(iid)
+
+    def delete(self, *items):
+        for item in items:
+            if item in self.rows:
+                del self.rows[item]
+            if item in self.order:
+                self.order.remove(item)
+
+    def get_children(self):
+        return tuple(self.order)
+
+
+class FakeLogText:
+    def __init__(self):
+        self.lines = []
+        self.state = "disabled"
+
+    def configure(self, **kwargs):
+        if "state" in kwargs:
+            self.state = kwargs["state"]
+
+    def insert(self, _index, text):
+        self.lines.extend(text.splitlines())
+
+    def index(self, _index):
+        return f"{max(len(self.lines), 1)}.0"
+
+    def delete(self, start, end):
+        if start == "1.0" and end.endswith(".0"):
+            count = int(end.split(".")[0]) - 1
+            del self.lines[:count]
+            return
+        self.lines = []
+
+    def see(self, _index):
+        pass
+
+
 def make_headless_gui():
     app = object.__new__(ArubaMmCleanupGui)
     app.counter_vars = {
@@ -51,7 +103,13 @@ def make_headless_gui():
     app.cancel_button = FakeButton()
     app.manual_button = FakeButton()
     app.schedule_button = FakeButton()
+    app.stop_schedule_button = FakeButton()
+    app.event_queue = queue.Queue()
+    app.cancel_event = threading.Event()
+    app.scheduler_stop_event = threading.Event()
     app.scheduler_running = False
+    app.is_running = False
+    app.closing = False
     app.rows = []
     app.logs = []
     app.timers = []
@@ -80,57 +138,6 @@ def test_version_and_gui_constants():
     assert MAX_HISTORY_ROWS == 500
     assert DEFAULT_INTERVAL_SECONDS == 300
     assert MIN_INTERVAL_SECONDS == 60
-
-
-def test_gui_has_manual_scheduler_and_cancel_controls():
-    source = inspect.getsource(ArubaMmCleanupGui)
-
-    assert "start_manual_run" in source
-    assert "start_scheduler" in source
-    assert "stop_scheduler" in source
-    assert "cancel_current_delete" in source
-    assert "disconnect_session" in source
-    assert "persistent_session=True" in source
-    assert "WM_DELETE_WINDOW" in source
-    assert "settings_frame" in source
-    assert "grid_remove" in source
-    assert "_sync_settings_visibility" in source
-    assert "_append_history_rows" in source
-    assert "_cap_history_rows" in source
-    assert "_mark_reappeared_rows" in source
-    assert "_action_button" in source
-    assert "_timer_card" in source
-    assert "_set_timer" in source
-    assert "history_row_counter" in source
-    assert "runner_lock" in source
-    assert "with self.runner_lock" in source
-    assert "delete_unknown" in source
-    assert "reappeared_macs" in source
-    assert "REAPPEARED" in source
-    assert "재조회" in source
-    assert "재조회됨" in source
-    assert "확인 필요" in source
-    assert "if self.scheduler_running" in source
-    assert "variant=\"secondary\"" in source
-    assert "variant=\"danger\"" in source
-    assert "variant=\"danger_outline\"" in source
-    assert "이번 삭제 취소" in source
-    assert "세션 연결 해제" in source
-    assert "주기 실행 시작" in source
-    assert "최근 삭제 이력" in source
-    assert "이력 전체 지우기" in source
-    assert "타이머" in source
-    assert "삭제 대기" in source
-    assert "다음 실행" in source
-    assert "조회/삭제 처리" in source
-    assert "next_run_var" not in source
-    assert "countdown_var" not in source
-    assert "조회" in source
-    assert "삭제 성공" in source
-    assert "삭제 실패" in source
-    assert "남은 MAC" in source
-    assert "_reset_run_counters" in source
-    assert "_increment_counter" in source
 
 
 def test_delete_progress_events_update_counters_immediately():
@@ -167,6 +174,112 @@ def test_running_state_resets_current_run_counters():
     assert app.cancel_button.config["state"] == "disabled"
 
 
+def test_enqueue_event_drops_worker_events_after_closing():
+    app = make_headless_gui()
+
+    assert app._enqueue_event("running", True) is True
+    app.closing = True
+    assert app._enqueue_event("running", False) is False
+
+    assert app.event_queue.get_nowait() == ("running", True)
+    assert app.event_queue.empty()
+
+
+def test_on_close_sets_flags_and_schedules_bounded_destroy_without_direct_close():
+    app = make_headless_gui()
+    app._drain_after_id = "drain-id"
+    canceled = []
+    scheduled = []
+    close_calls = []
+    app.after_cancel = lambda after_id: canceled.append(after_id)
+    app.after = lambda ms, callback: scheduled.append((ms, callback)) or "shutdown-id"
+    app._start_session_close = lambda **kwargs: close_calls.append(kwargs)
+
+    ArubaMmCleanupGui.on_close(app)
+
+    assert app.closing is True
+    assert app.scheduler_stop_event.is_set()
+    assert app.cancel_event.is_set()
+    assert canceled == ["drain-id"]
+    assert close_calls == [{"reason": "app_close", "enqueue_progress": False}]
+    assert scheduled[0][0] == SHUTDOWN_GRACE_MS
+
+
+def test_start_session_close_returns_without_waiting_for_runner_lock():
+    app = make_headless_gui()
+    app.runner_lock = threading.Lock()
+    app.runner_lock.acquire()
+    close_calls = []
+    app.runner = SimpleNamespace(close_session=lambda **_kwargs: close_calls.append("closed"))
+    app.session_close_worker = None
+
+    started = time.monotonic()
+    app._start_session_close(reason="manual", enqueue_progress=False)
+    elapsed = time.monotonic() - started
+
+    assert elapsed < 0.5
+    assert close_calls == []
+    app.runner_lock.release()
+    app.session_close_worker.join(timeout=2)
+    assert close_calls == ["closed"]
+
+
+def test_history_load_restores_jsonl_rows(tmp_path):
+    output_dir = tmp_path / "outputs"
+    output_dir.mkdir()
+    history_path = output_dir / HISTORY_FILE_NAME
+    history_path.write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "run_at": "2026-07-02T13:00:00",
+                        "mac": "aa:bb:cc:00:00:01",
+                        "result": "삭제 완료",
+                        "status": "verified_deleted",
+                        "success": True,
+                    },
+                    ensure_ascii=False,
+                ),
+                json.dumps(
+                    {
+                        "run_at": "2026-07-02T13:01:00",
+                        "mac": "aa:bb:cc:00:00:02",
+                        "status": "reappeared",
+                        "success": False,
+                        "error": "",
+                    },
+                    ensure_ascii=False,
+                ),
+            ]
+        ),
+        encoding="utf-8",
+    )
+    app = make_headless_gui()
+    app.history_table = FakeHistoryTable()
+    app.history_row_counter = 0
+    app.loaded_history_dir = None
+
+    app._load_history_from_output_dir(output_dir)
+
+    rows = [app.history_table.rows[item]["values"] for item in app.history_table.get_children()]
+    assert rows == [
+        ("2026-07-02 13:00:00", "aa:bb:cc:00:00:01", "삭제 완료", ""),
+        ("2026-07-02 13:01:00", "aa:bb:cc:00:00:02", "재조회됨", "삭제 성공 후 검증 조회에서 다시 발견"),
+    ]
+
+
+def test_log_text_is_capped_to_max_lines():
+    app = make_headless_gui()
+    app.log_text = FakeLogText()
+
+    for index in range(MAX_LOG_LINES + 5):
+        ArubaMmCleanupGui._log(app, f"line {index}")
+
+    assert len(app.log_text.lines) == MAX_LOG_LINES
+    assert "line 0" not in app.log_text.lines[0]
+
+
 def test_summary_overwrites_progress_counters_with_final_values():
     app = make_headless_gui()
     app.counter_vars["deleted"].set("9")
@@ -182,6 +295,7 @@ def test_summary_overwrites_progress_counters_with_final_values():
         reappeared_macs=[],
         audit_path=None,
         audit_error="",
+        history_error="",
     )
 
     app._handle_summary(summary)

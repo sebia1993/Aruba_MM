@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 import json
 import time
 from datetime import datetime
@@ -9,13 +10,14 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from .models import CleanupRunSummary, CleanupSettings, DeleteResult, MmConnectionConfig, QueryResult
-from .parser import normalize_mac, parse_global_user_table
+from .parser import normalize_mac, parse_global_user_table_explained
 from .session import ConnectionFactory, MmSession
 
 
 ProgressCallback = Callable[[str, dict[str, object]], None]
 CancelCheck = Callable[[], bool]
 SleepFunc = Callable[[float], None]
+HISTORY_FILE_NAME = "deletion_history.jsonl"
 
 
 def build_query_command(role: str) -> str:
@@ -63,15 +65,25 @@ class MmCleanupRunner:
         command = build_query_command(settings.role)
         self._emit(progress_callback, "query_start", command=command, role=settings.role)
         output = self.session.run_command(config, settings, command, progress_callback=progress_callback)
-        entries = parse_global_user_table(output, role_filter=settings.role)
+        parsed = parse_global_user_table_explained(output, role_filter=settings.role)
         self._emit(
             progress_callback,
             "query_done",
             command=command,
-            count=len(entries),
-            macs=[entry.mac for entry in entries],
+            count=len(parsed.entries),
+            macs=[entry.mac for entry in parsed.entries],
+            parse_decisions=[
+                {
+                    "line_number": item.line_number,
+                    "action": item.action,
+                    "reason": item.reason,
+                    "mac": item.mac,
+                    "role": item.role,
+                }
+                for item in parsed.decisions
+            ],
         )
-        return QueryResult(command=command, entries=entries)
+        return QueryResult(command=command, entries=parsed.entries, parse_decisions=parsed.decisions)
 
     def run_once(
         self,
@@ -90,6 +102,7 @@ class MmCleanupRunner:
             summary.query_command = query.command
             summary.queried_count = len(query.entries)
             summary.target_macs = _unique_macs(query.macs)
+            summary.query_parse_decisions = query.parse_decisions
             if not query.entries:
                 self._emit(progress_callback, "run_done", queried_count=0, remaining_count=0)
                 return self._finalize_summary(summary, output_dir=output_dir, host=config.host, progress_callback=progress_callback)
@@ -100,11 +113,39 @@ class MmCleanupRunner:
                 self._emit(progress_callback, "delete_canceled", count=summary.queried_count)
                 return self._finalize_summary(summary, output_dir=output_dir, host=config.host, progress_callback=progress_callback)
 
-            summary.delete_results = self._delete_macs(config, settings, summary.target_macs, progress_callback)
+            summary.delete_results = self._delete_macs(
+                config,
+                settings,
+                summary.target_macs,
+                progress_callback,
+                should_cancel=cancel_check,
+            )
+            if cancel_check():
+                summary.canceled = True
+                summary.verification_skipped = True
+                summary.delete_success_count = sum(1 for item in summary.delete_results if item.success)
+                summary.delete_failure_count = sum(1 for item in summary.delete_results if not item.success)
+                summary.remaining_count = max(summary.queried_count - summary.delete_success_count, 0)
+                self._emit(progress_callback, "delete_canceled", count=max(len(summary.target_macs) - len(summary.delete_results), 0))
+                return self._finalize_summary(summary, output_dir=output_dir, host=config.host, progress_callback=progress_callback)
+
+            # Catch stop/cancel requests that arrive after the delete loop but
+            # before the verification query starts.
+            if cancel_check():
+                summary.canceled = True
+                summary.verification_skipped = True
+                summary.delete_success_count = sum(1 for item in summary.delete_results if item.success)
+                summary.delete_failure_count = sum(1 for item in summary.delete_results if not item.success)
+                summary.remaining_count = max(summary.queried_count - summary.delete_success_count, 0)
+                self._emit(progress_callback, "delete_canceled", count=0)
+                return self._finalize_summary(summary, output_dir=output_dir, host=config.host, progress_callback=progress_callback)
+
+            verify = self._query_users(config, settings, progress_callback=progress_callback)
+            summary.verify_parse_decisions = verify.parse_decisions
+            summary.remaining_count = len(verify.entries)
+            summary.delete_results = _apply_verification(summary.delete_results, verify.macs)
             summary.delete_success_count = sum(1 for item in summary.delete_results if item.success)
             summary.delete_failure_count = sum(1 for item in summary.delete_results if not item.success)
-            verify = self._query_users(config, settings, progress_callback=progress_callback)
-            summary.remaining_count = len(verify.entries)
             summary.reappeared_macs = _reappeared_deleted_macs(summary.delete_results, verify.macs)
             summary.reappeared_count = len(summary.reappeared_macs)
             if summary.reappeared_macs:
@@ -134,11 +175,16 @@ class MmCleanupRunner:
         settings: CleanupSettings,
         macs: list[str],
         progress_callback: Optional[ProgressCallback],
+        *,
+        should_cancel: Optional[CancelCheck] = None,
     ) -> list[DeleteResult]:
         unique_macs = _unique_macs(macs)
         self._emit(progress_callback, "delete_batch_start", count=len(unique_macs))
         results: list[DeleteResult] = []
         for index, mac in enumerate(unique_macs, start=1):
+            if should_cancel is not None and should_cancel():
+                self._emit(progress_callback, "delete_canceled", count=len(unique_macs) - index + 1)
+                break
             command = build_delete_command(mac)
             self._emit(progress_callback, "delete_start", index=index, total=len(unique_macs), mac=mac, command=command)
             try:
@@ -149,13 +195,21 @@ class MmCleanupRunner:
                     progress_callback=progress_callback,
                     retry_once=False,
                 )
-                error = _delete_error_from_output(output)
-                success = not error
-                status = "deleted" if success else "failed"
-                results.append(DeleteResult(mac=mac, success=success, command=command, error=error, status=status))
+                status, error = classify_delete_response(output)
+                success = status == "deleted"
+                results.append(
+                    DeleteResult(
+                        mac=mac,
+                        success=success,
+                        command=command,
+                        error=error,
+                        status=status,
+                        response_status=status,
+                    )
+                )
                 self._emit(
                     progress_callback,
-                    "delete_done" if success else "delete_error",
+                    _delete_event_name(status),
                     index=index,
                     total=len(unique_macs),
                     mac=mac,
@@ -164,7 +218,16 @@ class MmCleanupRunner:
                 )
             except Exception as exc:
                 error = f"확인 필요: 삭제 명령 응답 실패 - {exc}"
-                results.append(DeleteResult(mac=mac, success=False, command=command, error=error, status="unknown"))
+                results.append(
+                    DeleteResult(
+                        mac=mac,
+                        success=False,
+                        command=command,
+                        error=error,
+                        status="unknown",
+                        response_status="unknown",
+                    )
+                )
                 self._emit(
                     progress_callback,
                     "delete_unknown",
@@ -217,6 +280,11 @@ class MmCleanupRunner:
         except Exception as exc:
             summary.audit_error = str(exc)
             self._emit(progress_callback, "warning", message=f"audit summary save failed: {exc}")
+        try:
+            summary.history_path = append_history_records(summary, output_dir=output_dir, host=host)
+        except Exception as exc:
+            summary.history_error = str(exc)
+            self._emit(progress_callback, "warning", message=f"deletion history save failed: {exc}")
         return summary
 
     @staticmethod
@@ -236,12 +304,84 @@ def write_audit_summary(summary: CleanupRunSummary, *, output_dir: Path, host: s
     return path
 
 
-def _delete_error_from_output(output: str) -> str:
-    normalized = (output or "").casefold()
-    for marker in ("invalid input", "permission denied", "not authorized", "error", "failed"):
+def append_history_records(summary: CleanupRunSummary, *, output_dir: Path, host: str) -> Optional[Path]:
+    if not summary.delete_results:
+        return None
+    output_dir.mkdir(parents=True, exist_ok=True)
+    path = output_dir / HISTORY_FILE_NAME
+    with path.open("a", encoding="utf-8") as handle:
+        for item in summary.delete_results:
+            record = {
+                "run_at": summary.started_at.isoformat(timespec="seconds"),
+                "host": host,
+                "role": summary.role,
+                "mac": item.mac,
+                "result": _history_result_label(item),
+                "success": item.success,
+                "status": item.status or ("deleted" if item.success else "failed"),
+                "response_status": item.response_status,
+                "verified_absent": item.verified_absent,
+                "error": item.error,
+                "reappeared": item.status == "reappeared",
+            }
+            handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+    return path
+
+
+def classify_delete_response(output: str) -> tuple[str, str]:
+    text = (output or "").strip()
+    normalized = text.casefold()
+    if not text:
+        return "unknown", "확인 필요: 삭제 명령 응답이 비어 있음"
+
+    failure_markers = (
+        "invalid input",
+        "permission denied",
+        "not authorized",
+        "authorization failed",
+        "authentication failed",
+        "access denied",
+        "not found",
+        "no such",
+        "does not exist",
+        "error",
+        "failed",
+    )
+    for marker in failure_markers:
         if marker in normalized:
-            return output.strip() or marker
-    return ""
+            return "failed", text
+
+    unknown_markers = (
+        "incomplete",
+        "ambiguous",
+        "timed out",
+        "timeout",
+        "try again",
+        "confirm",
+        "continue",
+    )
+    for marker in unknown_markers:
+        if marker in normalized:
+            return "unknown", f"확인 필요: 삭제 명령 응답 판정 불가 - {text}"
+
+    success_markers = (
+        "user deleted",
+        "deleted",
+        "delete successful",
+        "successfully deleted",
+        "removed",
+        "success",
+    )
+    for marker in success_markers:
+        if marker in normalized:
+            return "deleted", ""
+
+    return "unknown", f"확인 필요: 삭제 명령 응답 판정 불가 - {text}"
+
+
+def _delete_error_from_output(output: str) -> str:
+    status, error = classify_delete_response(output)
+    return "" if status == "deleted" else error
 
 
 def _unique_macs(macs: list[str]) -> list[str]:
@@ -257,6 +397,38 @@ def _unique_macs(macs: list[str]) -> list[str]:
 
 
 def _reappeared_deleted_macs(delete_results: list[DeleteResult], verify_macs: list[str]) -> list[str]:
+    return [item.mac for item in delete_results if item.status == "reappeared"]
+
+
+def _apply_verification(delete_results: list[DeleteResult], verify_macs: list[str]) -> list[DeleteResult]:
     remaining = set(_unique_macs(verify_macs))
-    deleted_success_macs = [item.mac for item in delete_results if item.success]
-    return [mac for mac in _unique_macs(deleted_success_macs) if mac in remaining]
+    verified: list[DeleteResult] = []
+    for item in delete_results:
+        absent = item.mac not in remaining
+        response_status = item.response_status or item.status
+        if response_status == "deleted" and absent:
+            verified.append(replace(item, success=True, status="verified_deleted", verified_absent=True))
+        elif response_status == "deleted":
+            error = item.error or "삭제 응답은 성공이었지만 검증 조회에서 다시 발견"
+            verified.append(replace(item, success=False, status="reappeared", error=error, verified_absent=False))
+        else:
+            verified.append(replace(item, success=False, status=response_status or "unknown", verified_absent=absent))
+    return verified
+
+
+def _delete_event_name(status: str) -> str:
+    if status == "deleted":
+        return "delete_done"
+    if status == "failed":
+        return "delete_error"
+    return "delete_unknown"
+
+
+def _history_result_label(item: DeleteResult) -> str:
+    if item.status == "reappeared":
+        return "재조회됨"
+    if item.status == "unknown":
+        return "확인 필요"
+    if item.success:
+        return "삭제 완료"
+    return "삭제 실패"

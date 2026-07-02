@@ -32,7 +32,8 @@ jobs:
         shell: pwsh
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -e ".[dev]"
+          python -m pip install -e ".[dev]" -c .\constraints.txt
+          python -m pip check
 
       - name: Create release metadata
         id: metadata
@@ -70,7 +71,7 @@ jobs:
 
       - name: Verify Windows release package
         shell: pwsh
-        run: python .\tools\verify_release_package.py --dist .\dist --smoke-cli
+        run: python .\tools\verify_release_package.py --dist .\dist --smoke-cli --smoke-gui --require-cli-smoke --require-gui-smoke
 
       - name: Prepare release assets
         id: assets
@@ -96,7 +97,10 @@ jobs:
         run: |
           python .\tools\verify_release_package.py `
             --zip "${{ steps.assets.outputs.asset_path }}" `
-            --smoke-cli
+            --smoke-cli `
+            --smoke-gui `
+            --require-cli-smoke `
+            --require-gui-smoke
 
       - name: Create Korean release notes
         id: notes
@@ -160,7 +164,7 @@ jobs:
           - 브랜치명: $branch
           - 실행한 검증 명령: powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\validate.ps1
           - 실행한 빌드 명령: powershell -NoProfile -ExecutionPolicy Bypass -File .\build_windows_gui_exe.ps1
-          - 실행한 패키지 검증: python .\tools\verify_release_package.py --dist .\dist --smoke-cli
+          - 실행한 패키지 검증: python .\tools\verify_release_package.py --dist .\dist --smoke-cli --smoke-gui --require-cli-smoke --require-gui-smoke
 
           ## 첨부 파일
           - Windows ZIP: $assetName

@@ -34,9 +34,25 @@ class UserEntry:
 
 
 @dataclass(frozen=True)
+class ParseDecision:
+    line_number: int
+    action: str
+    reason: str
+    mac: str = ""
+    role: str = ""
+
+
+@dataclass(frozen=True)
+class ParseResult:
+    entries: list[UserEntry]
+    decisions: list[ParseDecision] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
 class QueryResult:
     command: str
     entries: list[UserEntry]
+    parse_decisions: list[ParseDecision] = field(default_factory=list)
 
     @property
     def macs(self) -> list[str]:
@@ -50,6 +66,8 @@ class DeleteResult:
     command: str
     error: str = ""
     status: str = ""
+    response_status: str = ""
+    verified_absent: Optional[bool] = None
 
 
 @dataclass
@@ -65,9 +83,14 @@ class CleanupRunSummary:
     query_command: str = ""
     target_macs: list[str] = field(default_factory=list)
     reappeared_macs: list[str] = field(default_factory=list)
+    query_parse_decisions: list[ParseDecision] = field(default_factory=list)
+    verify_parse_decisions: list[ParseDecision] = field(default_factory=list)
     delete_results: list[DeleteResult] = field(default_factory=list)
+    verification_skipped: bool = False
     audit_path: Optional[Path] = None
+    history_path: Optional[Path] = None
     audit_error: str = ""
+    history_error: str = ""
     error: str = ""
 
     def as_audit_dict(self, *, host: str) -> dict[str, Any]:
@@ -82,18 +105,42 @@ class CleanupRunSummary:
             "remaining_count": self.remaining_count,
             "reappeared_count": self.reappeared_count,
             "canceled": self.canceled,
+            "verification_skipped": self.verification_skipped,
             "target_macs": self.target_macs,
             "reappeared_macs": self.reappeared_macs,
+            "query_parse_decisions": [
+                {
+                    "line_number": item.line_number,
+                    "action": item.action,
+                    "reason": item.reason,
+                    "mac": item.mac,
+                    "role": item.role,
+                }
+                for item in self.query_parse_decisions
+            ],
+            "verify_parse_decisions": [
+                {
+                    "line_number": item.line_number,
+                    "action": item.action,
+                    "reason": item.reason,
+                    "mac": item.mac,
+                    "role": item.role,
+                }
+                for item in self.verify_parse_decisions
+            ],
             "delete_results": [
                 {
                     "mac": item.mac,
                     "success": item.success,
                     "status": item.status or ("deleted" if item.success else "failed"),
+                    "response_status": item.response_status,
+                    "verified_absent": item.verified_absent,
                     "command": item.command,
                     "error": item.error,
                 }
                 for item in self.delete_results
             ],
             "audit_error": self.audit_error,
+            "history_error": self.history_error,
             "error": self.error,
         }

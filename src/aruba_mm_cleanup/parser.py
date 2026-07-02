@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 
-from .models import UserEntry
+from .models import ParseDecision, ParseResult, UserEntry
 
 
 _MAC_PATTERNS = (
@@ -24,6 +24,10 @@ def normalize_mac(value: str) -> str:
 
 
 def parse_global_user_table(output: str, *, role_filter: str = "profiling") -> list[UserEntry]:
+    return parse_global_user_table_explained(output, role_filter=role_filter).entries
+
+
+def parse_global_user_table_explained(output: str, *, role_filter: str = "profiling") -> ParseResult:
     """Extract target user MACs from `show global-user-table list role ...`.
 
     Aruba user-table output often contains other MAC-looking fields such as
@@ -32,69 +36,113 @@ def parse_global_user_table(output: str, *, role_filter: str = "profiling") -> l
     """
     role = role_filter.strip().casefold()
     entries: dict[str, UserEntry] = {}
-    for line in output.splitlines():
+    decisions: list[ParseDecision] = []
+    for line_number, line in enumerate(output.splitlines(), start=1):
         stripped = line.strip()
-        if not _looks_like_data_row(stripped):
+        skip_reason = _skip_reason(stripped)
+        if skip_reason:
+            if stripped:
+                decisions.append(ParseDecision(line_number, "ignored", skip_reason))
             continue
 
         tokens = stripped.split()
-        mac_index, mac = _target_mac_from_tokens(tokens, role_filter=role)
+        mac_index, mac, mac_reason = _target_mac_from_tokens(tokens, role_filter=role)
         if not mac:
+            decisions.append(ParseDecision(line_number, "ignored", mac_reason or "no_user_mac"))
             continue
-        if role and not _row_matches_role(tokens, role, mac_index):
+        role_matches, role_reason = _row_matches_role(tokens, role, mac_index)
+        if role and not role_matches:
             # The command should already filter by role, but this avoids deleting
             # unrelated rows if a device echoes a broader table.
+            decisions.append(
+                ParseDecision(
+                    line_number,
+                    "ignored",
+                    role_reason,
+                    mac=mac,
+                    role=_probable_role_token(tokens, mac_index) or _extract_role(tokens, role),
+                )
+            )
             continue
         if mac in entries:
+            decisions.append(ParseDecision(line_number, "ignored", "duplicate_user_mac", mac=mac, role=_extract_role(tokens, role)))
             continue
-        entries[mac] = UserEntry(
+        entry = UserEntry(
             mac=mac,
             role=_extract_role(tokens, role),
             username=_extract_username(tokens, mac_index),
             ip_address=_extract_ip(tokens),
         )
-    return list(entries.values())
+        entries[mac] = entry
+        decisions.append(ParseDecision(line_number, "selected", mac_reason or role_reason or "selected", mac=mac, role=entry.role))
+    return ParseResult(entries=list(entries.values()), decisions=decisions)
 
 
-def _looks_like_data_row(line: str) -> bool:
+def _skip_reason(line: str) -> str:
     if not line:
-        return False
+        return "blank"
     lowered = line.casefold()
     if lowered.startswith(("show ", "global user", "users", "total", "----", "mac address", "ip address")):
-        return False
+        return "header_or_command"
     if set(line.replace(" ", "")) <= {"-"}:
-        return False
-    return any(pattern.search(line) for pattern in _MAC_PATTERNS)
+        return "separator"
+    if not any(pattern.search(line) for pattern in _MAC_PATTERNS):
+        return "no_mac_token"
+    return ""
 
 
-def _target_mac_from_tokens(tokens: list[str], *, role_filter: str) -> tuple[int, str]:
+def _target_mac_from_tokens(tokens: list[str], *, role_filter: str) -> tuple[int, str, str]:
     candidates = [(index, normalize_mac(token)) for index, token in enumerate(tokens)]
     candidates = [(index, mac) for index, mac in candidates if mac]
     if not candidates:
-        return -1, ""
+        return -1, "", "no_mac_token"
 
-    role_index = _role_index(tokens, role_filter)
-    for index, mac in candidates:
-        if role_index >= 0 and index < role_index:
-            return index, mac
-    for index, mac in candidates:
-        if index <= 3:
-            return index, mac
-    return -1, ""
-
-
-def _row_matches_role(tokens: list[str], role_filter: str, mac_index: int) -> bool:
-    if not role_filter:
-        return True
     role_index = _role_index(tokens, role_filter)
     if role_index >= 0:
-        return True
+        before_role = [(index, mac) for index, mac in candidates if index < role_index]
+        identity_candidates = [(index, mac) for index, mac in before_role if index <= 3]
+        if len(identity_candidates) == 1:
+            index, mac = identity_candidates[0]
+            return index, mac, "selected_identity_mac_before_role"
+        if len(identity_candidates) > 1:
+            return -1, "", "ambiguous_identity_macs_before_role"
+        if len(before_role) == 1:
+            index, mac = before_role[0]
+            return index, mac, "selected_mac_before_role"
+        if len(before_role) > 1:
+            return -1, "", "ambiguous_macs_before_role"
+
+    primary_identity_candidates = [(index, mac) for index, mac in candidates if index <= 2]
+    if len(primary_identity_candidates) == 1:
+        index, mac = primary_identity_candidates[0]
+        return index, mac, "selected_identity_mac_without_role_column"
+    if len(primary_identity_candidates) > 1:
+        return -1, "", "ambiguous_identity_macs_without_role_column"
+    fallback_identity_candidates = [(index, mac) for index, mac in candidates if index <= 3]
+    if len(fallback_identity_candidates) == 1:
+        index, mac = fallback_identity_candidates[0]
+        return index, mac, "selected_identity_mac_without_role_column"
+    if len(fallback_identity_candidates) > 1:
+        return -1, "", "ambiguous_identity_macs_without_role_column"
+    return -1, "", "mac_token_outside_identity_columns"
+
+
+def _row_matches_role(tokens: list[str], role_filter: str, mac_index: int) -> tuple[bool, str]:
+    if not role_filter:
+        return True, "role_filter_empty"
+    role_index = _role_index(tokens, role_filter)
+    if role_index >= 0:
+        return True, "role_column_matches"
     role_candidate = _probable_role_token(tokens, mac_index)
     if role_candidate:
-        return role_candidate.casefold() == role_filter
+        if role_candidate.casefold() == role_filter:
+            return True, "probable_role_matches"
+        return False, "role_mismatch"
     # Some filtered outputs omit a role column. In that shape, accept rows where
     # the user MAC appears in the usual identity columns.
-    return 0 <= mac_index <= 3
+    if 0 <= mac_index <= 3 and _extract_ip(tokens):
+        return True, "accepted_filtered_output_without_role_column"
+    return False, "role_not_found"
 
 
 def _role_index(tokens: list[str], role_filter: str) -> int:

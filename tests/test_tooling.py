@@ -1,6 +1,8 @@
 import subprocess
 import sys
 import zipfile
+import configparser
+import re
 from pathlib import Path
 
 
@@ -39,7 +41,9 @@ def test_windows_build_and_docs_reference_current_exe_names():
         assert "ArubaMMCleanupGUI" in text
         assert "ArubaMMCleanupCLI" in text
     assert "aruba-mm-cleanup_vYYYY.MM.DD-HHMMSS_windows.zip" in readme
-    assert "python .\\tools\\verify_release_package.py --dist .\\dist --smoke-cli" in readme
+    assert "python .\\tools\\verify_release_package.py --dist .\\dist --smoke-cli --smoke-gui" in readme
+    assert '-c ".\\constraints.txt"' in build_script
+    assert "-m pip check" in build_script
 
 
 def test_github_actions_release_contract():
@@ -67,7 +71,8 @@ def test_github_actions_release_contract():
     assert "- 기준 커밋: $sha" in release_workflow
     assert "- 실행한 검증 명령: powershell -NoProfile -ExecutionPolicy Bypass -File .\\tools\\validate.ps1" in release_workflow
     assert "- 실행한 빌드 명령: powershell -NoProfile -ExecutionPolicy Bypass -File .\\build_windows_gui_exe.ps1" in release_workflow
-    assert "- 실행한 패키지 검증: python .\\tools\\verify_release_package.py --dist .\\dist --smoke-cli" in release_workflow
+    assert "--smoke-cli --smoke-gui --require-cli-smoke --require-gui-smoke" in release_workflow
+    assert "- 실행한 패키지 검증: python .\\tools\\verify_release_package.py --dist .\\dist --smoke-cli --smoke-gui --require-cli-smoke --require-gui-smoke" in release_workflow
     assert "## 첨부 파일" in release_workflow
     assert "- Windows ZIP: $assetName" in release_workflow
     assert "- GUI 실행 파일: ArubaMMCleanupGUI.exe" in release_workflow
@@ -75,3 +80,24 @@ def test_github_actions_release_contract():
     assert "세부 커밋 및 변경 파일" not in release_workflow
     assert "### 원본 커밋 목록" not in release_workflow
     assert "### 변경 파일" not in release_workflow
+
+
+def test_package_metadata_versions_and_dependencies_do_not_drift():
+    repo_root = Path(__file__).parents[1]
+    pyproject = (repo_root / "pyproject.toml").read_text(encoding="utf-8")
+    init_py = (repo_root / "src" / "aruba_mm_cleanup" / "__init__.py").read_text(encoding="utf-8")
+    setup_cfg = configparser.ConfigParser()
+    setup_cfg.read(repo_root / "setup.cfg", encoding="utf-8")
+    constraints = (repo_root / "constraints.txt").read_text(encoding="utf-8")
+
+    pyproject_version = re.search(r'^version = "([^"]+)"$', pyproject, re.MULTILINE).group(1)
+    init_version = re.search(r'^__version__ = "([^"]+)"$', init_py, re.MULTILINE).group(1)
+
+    assert pyproject_version == setup_cfg["metadata"]["version"] == init_version
+    assert '"netmiko>=4.3.0"' in pyproject
+    assert "netmiko>=4.3.0" in setup_cfg["options"]["install_requires"]
+    assert '"pyinstaller>=6.0"' in pyproject
+    assert "pyinstaller>=6.0" in setup_cfg["options.extras_require"]["dev"]
+    assert "netmiko==4.6.0" in constraints
+    assert "pyinstaller==6.21.0" in constraints
+    assert "pytest==8.4.2" in constraints

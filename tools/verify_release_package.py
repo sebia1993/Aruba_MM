@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import platform
 import subprocess
 import tempfile
@@ -25,10 +26,16 @@ def main(argv: Optional[list[str]] = None) -> int:
     parser.add_argument("--zip", dest="zip_path", type=Path, help="release ZIP path")
     parser.add_argument("--dist", type=Path, default=Path("dist"), help="directory containing a release ZIP")
     parser.add_argument("--smoke-cli", action="store_true", help="run ArubaMMCleanupCLI.exe --help on Windows")
+    parser.add_argument("--smoke-gui", action="store_true", help="run ArubaMMCleanupGUI.exe in smoke mode on Windows")
     parser.add_argument(
         "--require-cli-smoke",
         action="store_true",
         help="fail if --smoke-cli is requested on a non-Windows host",
+    )
+    parser.add_argument(
+        "--require-gui-smoke",
+        action="store_true",
+        help="fail if --smoke-gui is requested on a non-Windows host",
     )
     args = parser.parse_args(argv)
 
@@ -45,6 +52,8 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     if args.smoke_cli:
         _smoke_cli_help(zip_path, require=args.require_cli_smoke)
+    if args.smoke_gui:
+        _smoke_gui(zip_path, require=args.require_gui_smoke)
     print(f"Verified release package: {zip_path}")
     return 0
 
@@ -90,6 +99,32 @@ def _smoke_cli_help(zip_path: Path, *, require: bool) -> None:
             raise SystemExit(f"CLI smoke command failed with exit code {completed.returncode}:\n{output.strip()}")
         if "--host" not in output or "--role" not in output:
             raise SystemExit("CLI help output did not include expected options: --host, --role")
+
+
+def _smoke_gui(zip_path: Path, *, require: bool) -> None:
+    if platform.system() != "Windows":
+        if require:
+            raise SystemExit("GUI smoke test requires Windows.")
+        print("Skipping GUI smoke test on non-Windows host.")
+        return
+    with tempfile.TemporaryDirectory(prefix="aruba_mm_cleanup_gui_smoke_") as temp_dir:
+        extract_dir = Path(temp_dir)
+        with zipfile.ZipFile(zip_path) as archive:
+            archive.extractall(extract_dir)
+        gui_exe = extract_dir / "ArubaMMCleanupGUI.exe"
+        env = os.environ.copy()
+        env["ARUBA_MM_CLEANUP_GUI_SMOKE"] = "1"
+        completed = subprocess.run(
+            [str(gui_exe)],
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
+            env=env,
+        )
+        output = f"{completed.stdout}\n{completed.stderr}"
+        if completed.returncode != 0:
+            raise SystemExit(f"GUI smoke command failed with exit code {completed.returncode}:\n{output.strip()}")
 
 
 if __name__ == "__main__":
