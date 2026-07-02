@@ -933,11 +933,15 @@ class ArubaMmCleanupGui(tk.Tk):
             except tk.TclError:
                 pass
             self._set_timer("실행 중", "삭제 처리")
-            self._set_row_status(str(payload.get("mac")), "삭제 중", "")
-            self._log(f"DELETE START: {payload.get('mac')}")
+            raw_mac = payload.get("mac")
+            mac = "None" if raw_mac is None else (_safe_text(raw_mac) or raw_mac.__class__.__name__)
+            self._set_row_status(mac, "삭제 중", "")
+            self._log(f"DELETE START: {mac}")
         elif event == "delete_done":
-            self._set_row_status(str(payload.get("mac")), "삭제 완료", "")
-            self._log(f"DELETE OK: {payload.get('mac')}")
+            raw_mac = payload.get("mac")
+            mac = "None" if raw_mac is None else (_safe_text(raw_mac) or raw_mac.__class__.__name__)
+            self._set_row_status(mac, "삭제 완료", "")
+            self._log(f"DELETE OK: {mac}")
         elif event == "delete_error":
             raw_mac = payload.get("mac")
             raw_error = payload.get("error")

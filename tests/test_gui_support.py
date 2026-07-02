@@ -588,6 +588,26 @@ def test_delete_progress_events_update_rows_without_confirmed_delete_count():
     ]
 
 
+def test_delete_start_progress_handles_unprintable_mac_without_losing_row_or_log():
+    app = make_headless_gui()
+
+    ArubaMmCleanupGui._handle_progress(app, "delete_start", {"mac": BadErrorText()})
+
+    assert app.status_var.get() == "MAC 삭제 중"
+    assert app.timers[-1] == ("실행 중", "삭제 처리")
+    assert app.rows == [("BadErrorText", "삭제 중", "")]
+    assert "DELETE START: BadErrorText" in app.logs
+
+
+def test_delete_done_progress_handles_unprintable_mac_without_losing_row_or_log():
+    app = make_headless_gui()
+
+    ArubaMmCleanupGui._handle_progress(app, "delete_done", {"mac": BadErrorText()})
+
+    assert app.rows == [("BadErrorText", "삭제 완료", "")]
+    assert "DELETE OK: BadErrorText" in app.logs
+
+
 def test_delete_error_progress_handles_unprintable_error_without_losing_row_or_log():
     app = make_headless_gui()
 
