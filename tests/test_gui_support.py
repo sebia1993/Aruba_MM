@@ -2339,3 +2339,26 @@ def test_mac_copy_ignores_malformed_row_values():
     assert app.copy_notice_mac_var.get() == ""
     assert app.copy_notice_frame.hidden is True
     assert app.scheduled_callbacks == []
+
+
+def test_mac_copy_ignores_unprintable_mac_value():
+    class BadText:
+        def __str__(self):
+            raise RuntimeError("bad mac")
+
+    app = make_headless_gui()
+    table = FakeTreeTable()
+    table.insert(
+        "",
+        "end",
+        iid="bad-row",
+        values=(BadText(), "삭제 대상", "2026-07-02 13:00:00", "", ""),
+    )
+
+    ArubaMmCleanupGui._copy_mac_from_table_event(app, FakeClickEvent(), table, "#1")
+
+    assert app.clipboard_values == []
+    assert app.copy_notice_title_var.get() == ""
+    assert app.copy_notice_mac_var.get() == ""
+    assert app.copy_notice_frame.hidden is True
+    assert app.scheduled_callbacks == []

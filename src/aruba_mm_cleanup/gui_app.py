@@ -1454,7 +1454,10 @@ class ArubaMmCleanupGui(tk.Tk):
             return
         if column_index < 0 or column_index >= len(values):
             return
-        mac = str(values[column_index]).strip()
+        try:
+            mac = str(values[column_index]).strip()
+        except Exception:
+            return
         if not mac:
             return
         try:
