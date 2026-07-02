@@ -38,6 +38,7 @@ class MmSession:
             return send_mm_command(connection, command, timeout=settings.timeout)
         except Exception as exc:
             if not retry_once:
+                self.disconnect(progress_callback=progress_callback, reason="command_failed")
                 raise
             self._emit(
                 progress_callback,

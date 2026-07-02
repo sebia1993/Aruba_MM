@@ -677,6 +677,34 @@ def test_delete_command_exception_is_unknown_without_retry():
     assert any(event == "delete_unknown" for event, _payload in events)
 
 
+def test_delete_command_exception_closes_session_before_next_mac_without_retry():
+    failed_command = "aaa user delete mac aa:bb:cc:00:00:01"
+    next_command = "aaa user delete mac aa:bb:cc:00:00:02"
+    stale_connection = FakeConnection(
+        responses={"no paging": ""},
+        failures={failed_command: RuntimeError("socket timeout")},
+    )
+    fresh_connection = FakeConnection(responses={"no paging": "", next_command: "User deleted"})
+    connections = [stale_connection, fresh_connection]
+    runner = MmCleanupRunner(
+        connection_factory=lambda _config, _timeout: connections.pop(0),
+        sleep_func=lambda _seconds: None,
+    )
+
+    results = runner._delete_macs(
+        MmConnectionConfig(host="192.0.2.10", username="admin", password="secret"),
+        CleanupSettings(role="profiling", timeout=5, delete_delay_seconds=0),
+        ["aa:bb:cc:00:00:01", "aa:bb:cc:00:00:02"],
+        None,
+    )
+
+    assert [item.status for item in results] == ["unknown", "deleted"]
+    assert stale_connection.commands.count(failed_command) == 1
+    assert stale_connection.disconnected is True
+    assert fresh_connection.commands == ["no paging", next_command]
+    assert connections == []
+
+
 def test_classify_delete_response_handles_failure_unknown_and_success():
     assert classify_delete_response("User deleted") == ("deleted", "")
     assert classify_delete_response("Permission denied") == ("failed", "Permission denied")
