@@ -303,6 +303,42 @@ def test_cli_strips_host_before_connecting(monkeypatch):
     assert captured["host"] == "192.0.2.10"
 
 
+def test_cli_strips_username_before_connecting(monkeypatch):
+    captured = {}
+
+    class FakeRunner:
+        def run_once(self, config, *_args, **_kwargs):
+            captured["username"] = config.username
+            return SimpleNamespace(
+                queried_count=0,
+                delete_success_count=0,
+                delete_failure_count=0,
+                remaining_count=0,
+                reappeared_count=0,
+                audit_path=None,
+                audit_error="",
+                history_error="",
+                error="",
+            )
+
+    monkeypatch.setattr("aruba_mm_cleanup.cli.MmCleanupRunner", lambda: FakeRunner())
+
+    result = cli_main(
+        [
+            "--host",
+            "192.0.2.10",
+            "--username",
+            " admin ",
+            "--password",
+            "secret",
+            "--yes",
+        ]
+    )
+
+    assert result == 0
+    assert captured["username"] == "admin"
+
+
 def test_windows_build_and_docs_reference_current_exe_names():
     repo_root = Path(__file__).parents[1]
     build_script = (repo_root / "build_windows_gui_exe.ps1").read_text(encoding="utf-8")

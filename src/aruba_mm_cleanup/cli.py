@@ -25,7 +25,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     host = args.host.strip()
     if not host:
         parser.error("--host must not be empty")
-    if not args.username.strip():
+    username = args.username.strip()
+    if not username:
         parser.error("--username must not be empty")
     if args.port < 1 or args.port > 65535:
         parser.error("--port must be between 1 and 65535")
@@ -53,7 +54,7 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     config = MmConnectionConfig(
         host=host,
-        username=args.username,
+        username=username,
         password=password,
         port=args.port,
         enable_password=args.enable_password,
