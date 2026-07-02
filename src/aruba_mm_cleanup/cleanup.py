@@ -345,22 +345,24 @@ def append_history_records(summary: CleanupRunSummary, *, output_dir: Path, host
         return None
     output_dir.mkdir(parents=True, exist_ok=True)
     path = output_dir / HISTORY_FILE_NAME
+    lines: list[str] = []
+    for item in summary.delete_results:
+        record = {
+            "run_at": summary.started_at.isoformat(timespec="seconds"),
+            "host": host,
+            "role": summary.role,
+            "mac": item.mac,
+            "result": _history_result_label(item),
+            "success": item.success,
+            "status": item.status or ("deleted" if item.success else "failed"),
+            "response_status": item.response_status,
+            "verified_absent": item.verified_absent,
+            "error": item.error,
+            "reappeared": item.status == "reappeared",
+        }
+        lines.append(json.dumps(record, ensure_ascii=False) + "\n")
     with path.open("a", encoding="utf-8") as handle:
-        for item in summary.delete_results:
-            record = {
-                "run_at": summary.started_at.isoformat(timespec="seconds"),
-                "host": host,
-                "role": summary.role,
-                "mac": item.mac,
-                "result": _history_result_label(item),
-                "success": item.success,
-                "status": item.status or ("deleted" if item.success else "failed"),
-                "response_status": item.response_status,
-                "verified_absent": item.verified_absent,
-                "error": item.error,
-                "reappeared": item.status == "reappeared",
-            }
-            handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+        handle.writelines(lines)
     return path
 
 

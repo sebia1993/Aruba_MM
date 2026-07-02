@@ -1,11 +1,19 @@
 import json
+from datetime import datetime
 from pathlib import Path
 import sys
 from types import SimpleNamespace
 
-from aruba_mm_cleanup.cleanup import MmCleanupRunner, build_delete_command, build_query_command, classify_delete_response
+from aruba_mm_cleanup.cleanup import (
+    HISTORY_FILE_NAME,
+    MmCleanupRunner,
+    append_history_records,
+    build_delete_command,
+    build_query_command,
+    classify_delete_response,
+)
 from aruba_mm_cleanup.connection import connect_to_mm
-from aruba_mm_cleanup.models import CleanupSettings, MmConnectionConfig
+from aruba_mm_cleanup.models import CleanupRunSummary, CleanupSettings, DeleteResult, MmConnectionConfig
 from aruba_mm_cleanup.session import MmSession
 
 
@@ -702,3 +710,23 @@ def test_audit_save_failure_does_not_break_summary(tmp_path):
     assert summary.audit_path is None
     assert summary.audit_error
     assert any(event == "warning" and "audit summary save failed" in payload["message"] for event, payload in events)
+
+
+def test_history_append_serialization_failure_does_not_partially_append(tmp_path):
+    history_path = tmp_path / HISTORY_FILE_NAME
+    original_content = json.dumps({"run_at": "existing", "mac": "aa:bb:cc:00:00:ff"}) + "\n"
+    history_path.write_text(original_content, encoding="utf-8")
+    summary = CleanupRunSummary(started_at=datetime(2026, 7, 2, 13, 0, 0), role="profiling")
+    summary.delete_results = [
+        DeleteResult(mac="aa:bb:cc:00:00:01", success=True, command="cmd"),
+        DeleteResult(mac="aa:bb:cc:00:00:02", success=False, command="cmd", error=object()),  # type: ignore[arg-type]
+    ]
+
+    try:
+        append_history_records(summary, output_dir=tmp_path, host="192.0.2.10")
+    except TypeError:
+        pass
+    else:
+        raise AssertionError("append_history_records should report JSON serialization failure")
+
+    assert history_path.read_text(encoding="utf-8") == original_content
