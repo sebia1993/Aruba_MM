@@ -150,8 +150,10 @@ def test_github_actions_release_contract():
     assert '--title "Aruba MM Cleanup ${{ steps.metadata.outputs.tag }}"' in release_workflow
     assert "--draft=false" in release_workflow
     assert "# Aruba MM Cleanup $tag" in release_workflow
-    assert "CHANGELOG.md" in release_workflow
     assert "## 변경 내용" in release_workflow
+    assert 'git log --format="%H"' in release_workflow
+    assert '$changeSummary.Add("- $subject ($shortHash)")' in release_workflow
+    assert "CHANGELOG.md" not in release_workflow
     assert "## 검증" in release_workflow
     assert "- 기준 커밋: $sha" in release_workflow
     assert "- 실행한 검증 명령: powershell -NoProfile -ExecutionPolicy Bypass -File .\\tools\\validate.ps1" in release_workflow

@@ -120,30 +120,11 @@ jobs:
           }
 
           $changeSummary = New-Object System.Collections.Generic.List[string]
-          $inLatestChangelog = $false
-          foreach ($line in Get-Content -LiteralPath "CHANGELOG.md" -Encoding UTF8) {
-            if ($line -match "^##\s+") {
-              if ($inLatestChangelog) { break }
-              $inLatestChangelog = $true
-              continue
-            }
-            if ($inLatestChangelog -and $line.Trim().StartsWith("- ")) {
-              $changeSummary.Add($line.Trim())
-            }
-          }
-
-          if ($changeSummary.Count -eq 0) {
-            foreach ($commitHash in $commitHashes) {
-              if (-not $commitHash) { continue }
-              $shortHash = git rev-parse --short $commitHash
-              $subject = git log -1 --pretty=format:"%s" $commitHash
-              $body = git log -1 --pretty=format:"%b" $commitHash
-              $changeSummary.Add("- $subject ($shortHash)")
-              foreach ($line in ($body -split "`r?`n")) {
-                $trimmed = $line.Trim()
-                if ($trimmed) { $changeSummary.Add("  - $trimmed") }
-              }
-            }
+          foreach ($commitHash in $commitHashes) {
+            if (-not $commitHash) { continue }
+            $shortHash = git rev-parse --short $commitHash
+            $subject = git log -1 --pretty=format:"%s" $commitHash
+            $changeSummary.Add("- $subject ($shortHash)")
           }
           if ($changeSummary.Count -eq 0) {
             $changeSummary.Add("- 변경 요약을 자동으로 찾지 못했습니다.")
