@@ -28,7 +28,10 @@ def build_query_command(role: str) -> str:
 
 
 def build_delete_command(mac: str) -> str:
-    return f"aaa user delete mac {mac}"
+    mac_value = normalize_mac(mac)
+    if not mac_value:
+        raise ValueError("MAC 주소가 올바르지 않습니다.")
+    return f"aaa user delete mac {mac_value}"
 
 
 class MmCleanupRunner:
@@ -190,7 +193,30 @@ class MmCleanupRunner:
             if should_cancel is not None and should_cancel():
                 self._emit(progress_callback, "delete_canceled", count=len(unique_macs) - index + 1)
                 break
-            command = build_delete_command(mac)
+            try:
+                command = build_delete_command(mac)
+            except ValueError as exc:
+                error = f"확인 필요: 삭제 대상 MAC 오류 - {exc}"
+                results.append(
+                    DeleteResult(
+                        mac=mac,
+                        success=False,
+                        command="",
+                        error=error,
+                        status="unknown",
+                        response_status="unknown",
+                    )
+                )
+                self._emit(
+                    progress_callback,
+                    "delete_unknown",
+                    index=index,
+                    total=len(unique_macs),
+                    mac=mac,
+                    command="",
+                    error=error,
+                )
+                continue
             self._emit(progress_callback, "delete_start", index=index, total=len(unique_macs), mac=mac, command=command)
             try:
                 output = self.session.run_command(
