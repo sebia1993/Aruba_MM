@@ -873,7 +873,11 @@ class ArubaMmCleanupGui(tk.Tk):
                 self.status_var.set("MM 세션 재접속 중")
             except tk.TclError:
                 pass
-            self._log(f"RECONNECT: {payload.get('command')} | {payload.get('error')}")
+            raw_command = payload.get("command")
+            raw_error = payload.get("error")
+            command = "None" if raw_command is None else (_safe_text(raw_command) or raw_command.__class__.__name__)
+            error = "None" if raw_error is None else (_safe_text(raw_error) or raw_error.__class__.__name__)
+            self._log(f"RECONNECT: {command} | {error}")
         elif event == "session_disconnected":
             try:
                 self.status_var.set("세션 연결 해제")
