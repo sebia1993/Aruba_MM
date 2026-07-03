@@ -254,6 +254,11 @@ class DeleteFailingLogText(FakeLogText):
         raise tk.TclError("invalid command name")
 
 
+class UnexpectedDeleteFailingLogText(FakeLogText):
+    def delete(self, _start, _end):
+        raise RuntimeError("log delete failed")
+
+
 class InsertFailingLogText(FakeLogText):
     def insert(self, _index, _text):
         raise tk.TclError("invalid command name")
@@ -2644,6 +2649,17 @@ def test_log_stays_disabled_when_cap_delete_fails():
     assert app.log_text.state == "disabled"
 
 
+def test_log_stays_disabled_when_cap_delete_unexpectedly_fails():
+    app = make_headless_gui()
+    app.log_text = UnexpectedDeleteFailingLogText()
+    app.log_text.lines = [f"line {index}" for index in range(MAX_LOG_LINES + 1)]
+
+    ArubaMmCleanupGui._log(app, "line still recorded")
+
+    assert app.log_text.lines[-1].endswith("line still recorded")
+    assert app.log_text.state == "disabled"
+
+
 def test_log_restores_disabled_state_when_insert_fails():
     app = make_headless_gui()
     app.log_text = InsertFailingLogText()
@@ -2666,6 +2682,15 @@ def test_log_ignores_destroyed_log_widget():
 def test_clear_log_restores_disabled_state_when_delete_fails():
     app = make_headless_gui()
     app.log_text = DeleteFailingLogText()
+
+    ArubaMmCleanupGui.clear_log(app)
+
+    assert app.log_text.state == "disabled"
+
+
+def test_clear_log_restores_disabled_state_when_delete_unexpectedly_fails():
+    app = make_headless_gui()
+    app.log_text = UnexpectedDeleteFailingLogText()
 
     ArubaMmCleanupGui.clear_log(app)
 

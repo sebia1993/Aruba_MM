@@ -1425,7 +1425,7 @@ class ArubaMmCleanupGui(tk.Tk):
         if overflow > 0:
             try:
                 self.log_text.delete("1.0", f"{overflow + 1}.0")
-            except tk.TclError:
+            except Exception:
                 return
 
     def clear_log(self) -> None:
@@ -1433,7 +1433,7 @@ class ArubaMmCleanupGui(tk.Tk):
             self.log_text.configure(state="normal")
             self.log_text.delete("1.0", "end")
             self.log_text.configure(state="disabled")
-        except tk.TclError:
+        except Exception:
             try:
                 self.log_text.configure(state="disabled")
             except tk.TclError:
