@@ -934,6 +934,29 @@ def test_query_done_ignores_string_macs_payload_without_character_rows():
     assert replaced == [([], "삭제 대상", {"type_na_macs": []})]
 
 
+def test_query_done_ignores_unreadable_mac_payloads_without_stopping_log():
+    class UnreadableMacs(list):
+        def __iter__(self):
+            raise RuntimeError("bad macs")
+
+    app = make_headless_gui()
+    replaced = []
+    app._replace_table = lambda macs, status, **kwargs: replaced.append((macs, status, kwargs))
+
+    app._handle_progress(
+        "query_done",
+        {
+            "count": 1,
+            "macs": UnreadableMacs(["aa:bb:cc:00:00:01"]),
+            "type_na_macs": UnreadableMacs(["aa:bb:cc:00:00:01"]),
+        },
+    )
+
+    assert app.counter_vars["queried"].get() == "7"
+    assert replaced == [([], "삭제 대상", {"type_na_macs": []})]
+    assert "QUERY DONE: 1 MAC(s)" in app.logs
+
+
 def test_query_done_ignores_non_string_mac_items_without_table_rows():
     app = make_headless_gui()
     app.table = FakeTreeTable()

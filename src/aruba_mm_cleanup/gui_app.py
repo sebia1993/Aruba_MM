@@ -944,10 +944,25 @@ class ArubaMmCleanupGui(tk.Tk):
         elif event == "query_done":
             raw_macs = payload.get("macs")
             raw_type_na_macs = payload.get("type_na_macs")
-            macs = list(raw_macs) if isinstance(raw_macs, (list, tuple, set)) else []
+            macs = []
+            if isinstance(raw_macs, (list, tuple, set)):
+                try:
+                    macs = list(raw_macs)
+                except Exception:
+                    macs = []
             type_na_macs = []
             if isinstance(raw_type_na_macs, (list, tuple, set)):
-                for mac in raw_type_na_macs:
+                try:
+                    type_na_macs_iter = iter(raw_type_na_macs)
+                except Exception:
+                    type_na_macs_iter = iter(())
+                while True:
+                    try:
+                        mac = next(type_na_macs_iter)
+                    except StopIteration:
+                        break
+                    except Exception:
+                        break
                     try:
                         type_na_macs.append(str(mac))
                     except Exception:
