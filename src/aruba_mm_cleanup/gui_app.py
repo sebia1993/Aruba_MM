@@ -1497,7 +1497,17 @@ class ArubaMmCleanupGui(tk.Tk):
             delete_results = safe_get(audit, "delete_results", []) or []
             if not isinstance(delete_results, (list, tuple)):
                 delete_results = []
-            for item in delete_results:
+            try:
+                delete_results_iter = iter(delete_results)
+            except Exception:
+                continue
+            while True:
+                try:
+                    item = next(delete_results_iter)
+                except StopIteration:
+                    break
+                except Exception:
+                    break
                 if not isinstance(item, dict):
                     continue
                 mac = safe_get(item, "mac", "")
