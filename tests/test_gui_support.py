@@ -1396,6 +1396,22 @@ def test_drain_events_handles_missing_progress_payload_as_empty_dict():
     assert not any("이벤트 처리 실패(progress)" in message for message in app.logs)
 
 
+def test_drain_events_treats_unreadable_running_payload_as_stopped():
+    class BadRunning:
+        def __bool__(self):
+            raise RuntimeError("bad running bool")
+
+    app = make_headless_gui()
+    app.is_running = True
+    app.event_queue.put(("running", BadRunning()))
+
+    ArubaMmCleanupGui._drain_events(app)
+
+    assert app.is_running is False
+    assert app.timers[-1] == ("-", "대기")
+    assert not any("이벤트 처리 실패(running)" in message for message in app.logs)
+
+
 def test_drain_events_ignores_reschedule_failure():
     app = make_headless_gui()
     app._drain_after_id = "old-after"
