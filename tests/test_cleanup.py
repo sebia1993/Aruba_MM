@@ -720,6 +720,43 @@ def test_run_once_flags_successfully_deleted_mac_that_reappears(tmp_path):
     assert audit["reappeared_macs"] == ["aa:bb:cc:00:00:01"]
 
 
+def test_reappeared_deleted_macs_tolerates_unreadable_items():
+    class FailingStatusResult(DeleteResult):
+        def __getattribute__(self, name):
+            if name == "status":
+                raise RuntimeError("bad status")
+            return super().__getattribute__(name)
+
+    class FailingMacResult(DeleteResult):
+        def __getattribute__(self, name):
+            if name == "mac":
+                raise RuntimeError("bad mac")
+            return super().__getattribute__(name)
+
+    results = [
+        FailingStatusResult(
+            mac="aa:bb:cc:00:00:01",
+            success=False,
+            command="cmd",
+            status="reappeared",
+        ),
+        FailingMacResult(
+            mac="aa:bb:cc:00:00:02",
+            success=False,
+            command="cmd",
+            status="reappeared",
+        ),
+        DeleteResult(
+            mac="aa:bb:cc:00:00:03",
+            success=False,
+            command="cmd",
+            status="reappeared",
+        ),
+    ]
+
+    assert cleanup_module._reappeared_deleted_macs(results, []) == ["aa:bb:cc:00:00:03"]
+
+
 def test_run_once_verification_handles_malformed_delete_result_mac(tmp_path):
     first_query = "10.1.1.10 aa:bb:cc:00:00:01 user-a profiling"
     connection = FakeConnection(

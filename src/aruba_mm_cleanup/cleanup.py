@@ -640,7 +640,14 @@ def _unique_macs(macs: list[str]) -> list[str]:
 
 
 def _reappeared_deleted_macs(delete_results: list[DeleteResult], verify_macs: list[str]) -> list[str]:
-    return [item.mac for item in delete_results if item.status == "reappeared"]
+    reappeared: list[str] = []
+    for item in _safe_list_items(delete_results):
+        if _safe_text(_safe_attr(item, "status", "")) != "reappeared":
+            continue
+        mac = _safe_text(_safe_attr(item, "mac", ""))
+        if mac:
+            reappeared.append(mac)
+    return reappeared
 
 
 def _apply_verification(delete_results: list[DeleteResult], verify_macs: list[str]) -> list[DeleteResult]:
