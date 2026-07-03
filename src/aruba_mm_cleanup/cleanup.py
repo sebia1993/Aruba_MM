@@ -17,6 +17,7 @@ from .models import (
     MmConnectionConfig,
     QueryResult,
     _safe_list_items,
+    _safe_optional_bool,
     _safe_text,
     _safe_timestamp_text,
 )
@@ -499,12 +500,12 @@ def append_history_records(summary: CleanupRunSummary, *, output_dir: Path, host
             "run_at": run_at,
             "host": host_text,
             "role": role,
-            "mac": item.mac,
+            "mac": _safe_text(_safe_attr(item, "mac", "")),
             "result": _history_result_label(item),
             "success": success,
             "status": status or ("deleted" if success else "failed"),
-            "response_status": item.response_status,
-            "verified_absent": item.verified_absent,
+            "response_status": _safe_text(_safe_attr(item, "response_status", "")),
+            "verified_absent": _safe_optional_bool(_safe_attr(item, "verified_absent", None)),
             "error": item.error,
             "reappeared": status == "reappeared",
         }

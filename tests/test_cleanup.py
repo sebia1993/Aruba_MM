@@ -2058,6 +2058,31 @@ def test_history_append_treats_unreadable_success_as_failure(tmp_path):
     assert history[-1]["result"] == "삭제 실패"
 
 
+def test_history_append_tolerates_unserializable_optional_fields(tmp_path):
+    class BadOptionalBool(str):
+        def strip(self, *_args, **_kwargs):
+            raise RuntimeError("bad strip")
+
+    result = DeleteResult(
+        mac="aa:bb:cc:00:00:01",
+        success=True,
+        command="cmd",
+        response_status="deleted",
+        verified_absent=True,
+    )
+    object.__setattr__(result, "response_status", object())
+    object.__setattr__(result, "verified_absent", BadOptionalBool("true"))
+    summary = CleanupRunSummary(started_at=datetime(2026, 7, 2, 13, 0, 0), role="profiling")
+    summary.delete_results = [result]
+
+    path = append_history_records(summary, output_dir=tmp_path, host="192.0.2.10")
+
+    history = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+    assert history[-1]["mac"] == "aa:bb:cc:00:00:01"
+    assert history[-1]["response_status"]
+    assert history[-1]["verified_absent"] is None
+
+
 def test_run_once_audit_unprintable_write_failure_keeps_summary(tmp_path, monkeypatch):
     def failing_write_audit_summary(*_args, **_kwargs):
         raise BadErrorText()
