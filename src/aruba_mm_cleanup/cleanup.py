@@ -345,7 +345,16 @@ class MmCleanupRunner:
         progress_callback: Optional[ProgressCallback],
     ) -> CleanupRunSummary:
         if not self.persistent_session:
-            self.close_session(progress_callback=progress_callback, reason="run_complete")
+            try:
+                self.close_session(progress_callback=progress_callback, reason="run_complete")
+            except Exception as exc:
+                error = _exception_text(exc)
+                self._emit(
+                    progress_callback,
+                    "warning",
+                    message=f"session close failed: {error}",
+                    reason="run_complete",
+                )
         try:
             summary.audit_path = write_audit_summary(summary, output_dir=output_dir, host=host)
         except Exception as exc:
