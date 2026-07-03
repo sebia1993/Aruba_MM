@@ -97,27 +97,78 @@ class MmCleanupRunner:
         if not isinstance(output, str):
             raise RuntimeError("장비 조회 응답이 올바르지 않습니다.")
         parsed = parse_global_user_table_explained(output, role_filter=settings.role)
+        try:
+            entries = parsed.entries
+        except Exception:
+            entries = []
+        try:
+            decisions = parsed.decisions
+        except Exception:
+            decisions = []
+        query_macs: list[str] = []
+        type_na_macs: list[str] = []
+        entries_count: Optional[int] = None
+        try:
+            entries_count = len(entries)
+        except Exception:
+            entries_count = None
+        try:
+            entries_iter = iter(entries)
+        except Exception:
+            entries_iter = iter(())
+        while True:
+            try:
+                entry = next(entries_iter)
+            except StopIteration:
+                break
+            except Exception:
+                break
+            try:
+                mac = entry.mac
+            except Exception:
+                continue
+            query_macs.append(mac)
+            try:
+                is_type_na = bool(entry.type_na)
+            except Exception:
+                is_type_na = False
+            if is_type_na:
+                type_na_macs.append(mac)
+        if entries_count is None:
+            entries_count = len(query_macs)
+        parse_decisions: list[dict[str, object]] = []
+        try:
+            decisions_iter = iter(decisions)
+        except Exception:
+            decisions_iter = iter(())
+        while True:
+            try:
+                item = next(decisions_iter)
+            except StopIteration:
+                break
+            except Exception:
+                break
+            parse_decisions.append(
+                {
+                    "line_number": _safe_attr(item, "line_number", 0),
+                    "action": _safe_attr(item, "action", ""),
+                    "reason": _safe_attr(item, "reason", ""),
+                    "mac": _safe_attr(item, "mac", ""),
+                    "role": _safe_attr(item, "role", ""),
+                    "user_type": _safe_attr(item, "user_type", ""),
+                    "type_na": _safe_attr(item, "type_na", False),
+                }
+            )
         self._emit(
             progress_callback,
             "query_done",
             command=command,
-            count=len(parsed.entries),
-            macs=[entry.mac for entry in parsed.entries],
-            parse_decisions=[
-                {
-                    "line_number": item.line_number,
-                    "action": item.action,
-                    "reason": item.reason,
-                    "mac": item.mac,
-                    "role": item.role,
-                    "user_type": item.user_type,
-                    "type_na": item.type_na,
-                }
-                for item in parsed.decisions
-            ],
-            type_na_macs=[entry.mac for entry in parsed.entries if entry.type_na],
+            count=entries_count,
+            macs=query_macs,
+            parse_decisions=parse_decisions,
+            type_na_macs=type_na_macs,
         )
-        return QueryResult(command=command, entries=parsed.entries, parse_decisions=parsed.decisions)
+        return QueryResult(command=command, entries=entries, parse_decisions=decisions)
 
     def run_once(
         self,
@@ -603,6 +654,13 @@ def _history_result_label(item: DeleteResult) -> str:
     if item.success:
         return "삭제 완료"
     return "삭제 실패"
+
+
+def _safe_attr(item: object, name: str, default: object) -> object:
+    try:
+        return getattr(item, name, default)
+    except Exception:
+        return default
 
 
 def _exception_text(exc: BaseException) -> str:

@@ -4,6 +4,7 @@ from pathlib import Path
 import sys
 from types import SimpleNamespace
 
+import aruba_mm_cleanup.cleanup as cleanup_module
 from aruba_mm_cleanup.cleanup import (
     HISTORY_FILE_NAME,
     MmCleanupRunner,
@@ -380,6 +381,86 @@ def test_query_users_keeps_result_when_session_close_fails():
     assert query.macs == ["aa:bb:cc:00:00:01"]
     assert session.disconnect_called is True
     assert ("warning", {"message": "session close failed: close failed", "reason": "run_complete"}) in events
+
+
+def test_query_users_progress_tolerates_failing_parse_result_fields(monkeypatch):
+    class FailingEntry:
+        @property
+        def mac(self):
+            raise RuntimeError("bad entry mac")
+
+        @property
+        def type_na(self):
+            raise RuntimeError("bad entry type")
+
+    class FailingDecision:
+        @property
+        def line_number(self):
+            raise RuntimeError("bad line")
+
+        @property
+        def action(self):
+            raise RuntimeError("bad action")
+
+        @property
+        def reason(self):
+            raise RuntimeError("bad reason")
+
+        @property
+        def mac(self):
+            raise RuntimeError("bad mac")
+
+        @property
+        def role(self):
+            raise RuntimeError("bad role")
+
+        @property
+        def user_type(self):
+            raise RuntimeError("bad type")
+
+        @property
+        def type_na(self):
+            raise RuntimeError("bad type flag")
+
+    good_entry = UserEntry(mac="aa:bb:cc:00:00:02", type_na=True)
+    good_decision = ParseDecision(
+        line_number=2,
+        action="selected",
+        reason="matched",
+        mac="aa:bb:cc:00:00:02",
+        role="profiling",
+        user_type="N/A",
+        type_na=True,
+    )
+
+    monkeypatch.setattr(
+        cleanup_module,
+        "parse_global_user_table_explained",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            entries=[FailingEntry(), good_entry],
+            decisions=[FailingDecision(), good_decision],
+        ),
+    )
+    session = SimpleNamespace(
+        run_command=lambda *_args, **_kwargs: "raw output",
+        disconnect=lambda **_kwargs: None,
+    )
+    events = []
+    runner = MmCleanupRunner(session=session)
+
+    query = runner.query_users(
+        MmConnectionConfig(host="192.0.2.10", username="admin", password="secret"),
+        CleanupSettings(role="profiling", timeout=5, delete_delay_seconds=0),
+        progress_callback=lambda event, payload: events.append((event, payload)),
+    )
+
+    payload = next(payload for event, payload in events if event == "query_done")
+    assert len(query.entries) == 2
+    assert payload["macs"] == ["aa:bb:cc:00:00:02"]
+    assert payload["type_na_macs"] == ["aa:bb:cc:00:00:02"]
+    assert payload["parse_decisions"][0]["line_number"] == 0
+    assert payload["parse_decisions"][0]["action"] == ""
+    assert payload["parse_decisions"][1]["mac"] == "aa:bb:cc:00:00:02"
 
 
 def test_run_once_deletes_snapshot_and_verifies_remaining(tmp_path):
