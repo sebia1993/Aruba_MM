@@ -1618,6 +1618,16 @@ def test_drain_events_ignores_reschedule_failure():
     assert app._drain_after_id is None
 
 
+def test_drain_events_ignores_unexpected_reschedule_failure():
+    app = make_headless_gui()
+    app._drain_after_id = "old-after"
+    app.after = lambda _ms, _callback: (_ for _ in ()).throw(RuntimeError("after failed"))
+
+    ArubaMmCleanupGui._drain_events(app)
+
+    assert app._drain_after_id is None
+
+
 def test_run_once_worker_reports_unexpected_runner_failure_and_resets_running():
     app = make_headless_gui()
     app.runner_lock = threading.Lock()

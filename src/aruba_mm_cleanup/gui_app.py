@@ -909,7 +909,7 @@ class ArubaMmCleanupGui(tk.Tk):
         if not self.closing:
             try:
                 self._drain_after_id = self.after(150, self._drain_events)
-            except tk.TclError:
+            except Exception:
                 self._drain_after_id = None
 
     def _handle_progress(self, event: str, payload: dict[str, object]) -> None:
