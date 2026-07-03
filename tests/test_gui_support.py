@@ -3415,6 +3415,29 @@ def test_summary_button_failure_does_not_skip_audit_or_history():
     assert app.history_summaries == [summary]
 
 
+def test_summary_unexpected_button_failure_does_not_skip_audit_or_history():
+    app = make_headless_gui()
+    app.cancel_button = UnexpectedConfigureFailingButton()
+    summary = SimpleNamespace(
+        queried_count=1,
+        target_macs=["aa:bb:cc:00:00:01"],
+        delete_success_count=1,
+        reappeared_count=0,
+        verification_skipped=False,
+        error="",
+        canceled=False,
+        reappeared_macs=[],
+        audit_path="/tmp/audit.json",
+        audit_error="",
+        history_error="",
+    )
+
+    ArubaMmCleanupGui._handle_summary(app, summary)
+
+    assert "AUDIT: /tmp/audit.json" in app.logs
+    assert app.history_summaries == [summary]
+
+
 def test_summary_does_not_double_count_query_progress():
     app = make_headless_gui()
     app._replace_table = lambda *_args, **_kwargs: None
