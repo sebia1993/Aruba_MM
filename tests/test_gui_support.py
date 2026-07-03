@@ -1412,6 +1412,20 @@ def test_drain_events_treats_unreadable_running_payload_as_stopped():
     assert not any("이벤트 처리 실패(running)" in message for message in app.logs)
 
 
+def test_drain_events_handles_unprintable_next_run_payload():
+    class BadNextRun:
+        def __str__(self):
+            raise RuntimeError("bad next run text")
+
+    app = make_headless_gui()
+    app.event_queue.put(("next_run", BadNextRun()))
+
+    ArubaMmCleanupGui._drain_events(app)
+
+    assert app.timers[-1] == ("BadNextRuns", "다음 실행")
+    assert not any("이벤트 처리 실패(next_run)" in message for message in app.logs)
+
+
 def test_drain_events_ignores_reschedule_failure():
     app = make_headless_gui()
     app._drain_after_id = "old-after"

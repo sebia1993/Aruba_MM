@@ -863,7 +863,8 @@ class ArubaMmCleanupGui(tk.Tk):
                     elif event == "summary":
                         self._handle_summary(payload)
                     elif event == "next_run":
-                        self._set_timer(f"{payload}s", "다음 실행")
+                        remaining = "None" if payload is None else (_safe_text(payload) or payload.__class__.__name__)
+                        self._set_timer(f"{remaining}s", "다음 실행")
                     elif event == "scheduler_stopped":
                         self.scheduler_running = False
                         try:
