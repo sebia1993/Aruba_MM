@@ -507,6 +507,44 @@ def test_run_once_deletes_snapshot_and_verifies_remaining(tmp_path):
     assert any(event == "countdown" and payload["remaining"] == 1 for event, payload in events)
 
 
+def test_run_once_tolerates_query_entries_length_failure(tmp_path):
+    class UnreadableLengthEntries(list):
+        def __len__(self):
+            raise RuntimeError("bad entries length")
+
+        def __bool__(self):
+            raise RuntimeError("bad entries bool")
+
+    first_query = QueryResult(
+        command="show",
+        entries=UnreadableLengthEntries([UserEntry(mac="aa:bb:cc:00:00:01")]),
+    )
+    verify_query = QueryResult(command="show", entries=UnreadableLengthEntries([]))
+    queries = [first_query, verify_query]
+    runner = MmCleanupRunner(sleep_func=lambda _seconds: None)
+    runner._query_users = lambda *_args, **_kwargs: queries.pop(0)  # type: ignore[method-assign]
+    runner._delete_macs = lambda *_args, **_kwargs: [  # type: ignore[method-assign]
+        DeleteResult(
+            mac="aa:bb:cc:00:00:01",
+            success=True,
+            command="cmd",
+            status="deleted",
+            response_status="deleted",
+        )
+    ]
+
+    summary = runner.run_once(
+        MmConnectionConfig(host="192.0.2.10", username="admin", password="secret"),
+        CleanupSettings(role="profiling", timeout=5, delete_delay_seconds=0),
+        output_dir=tmp_path,
+    )
+
+    assert summary.error == ""
+    assert summary.queried_count == 1
+    assert summary.target_macs == ["aa:bb:cc:00:00:01"]
+    assert summary.delete_success_count == 1
+
+
 def test_run_once_records_partial_delete_failure(tmp_path):
     first_query = "10.1.1.10 aa:bb:cc:00:00:01 user-a profiling\n10.1.1.11 aa:bb:cc:00:00:02 user-b profiling"
     connection = FakeConnection(

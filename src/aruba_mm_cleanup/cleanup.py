@@ -185,10 +185,17 @@ class MmCleanupRunner:
         try:
             query = self._query_users(config, settings, progress_callback=progress_callback)
             summary.query_command = query.command
-            summary.queried_count = len(query.entries)
             summary.target_macs = _unique_macs(query.macs)
+            try:
+                summary.queried_count = len(query.entries)
+            except Exception:
+                summary.queried_count = len(summary.target_macs)
             summary.query_parse_decisions = query.parse_decisions
-            if not query.entries:
+            try:
+                has_query_entries = bool(query.entries)
+            except Exception:
+                has_query_entries = bool(summary.target_macs)
+            if not has_query_entries:
                 self._emit(progress_callback, "run_done", queried_count=0, remaining_count=0)
                 return self._finalize_summary(summary, output_dir=output_dir, host=config.host, progress_callback=progress_callback)
 
@@ -235,7 +242,10 @@ class MmCleanupRunner:
 
             verify = self._query_users(config, settings, progress_callback=progress_callback)
             summary.verify_parse_decisions = verify.parse_decisions
-            summary.remaining_count = len(verify.entries)
+            try:
+                summary.remaining_count = len(verify.entries)
+            except Exception:
+                summary.remaining_count = len(_unique_macs(verify.macs))
             summary.delete_results = _apply_verification(summary.delete_results, verify.macs)
             summary.delete_success_count = sum(1 for item in summary.delete_results if item.success)
             summary.delete_failure_count = sum(1 for item in summary.delete_results if not item.success)
