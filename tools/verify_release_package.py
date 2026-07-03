@@ -101,13 +101,18 @@ def _smoke_cli_help(zip_path: Path, *, require: bool) -> None:
         with zipfile.ZipFile(zip_path) as archive:
             archive.extractall(extract_dir)
         cli_exe = extract_dir / "ArubaMMCleanupCLI.exe"
-        completed = subprocess.run(
-            [str(cli_exe), "--help"],
-            capture_output=True,
-            text=True,
-            timeout=60,
-            check=False,
-        )
+        try:
+            completed = subprocess.run(
+                [str(cli_exe), "--help"],
+                capture_output=True,
+                text=True,
+                timeout=60,
+                check=False,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise SystemExit("CLI smoke command timed out after 60 seconds.") from exc
+        except OSError as exc:
+            raise SystemExit(f"CLI smoke command could not start: {exc}") from exc
         output = f"{completed.stdout}\n{completed.stderr}"
         if completed.returncode != 0:
             raise SystemExit(f"CLI smoke command failed with exit code {completed.returncode}:\n{output.strip()}")
@@ -128,14 +133,19 @@ def _smoke_gui(zip_path: Path, *, require: bool) -> None:
         gui_exe = extract_dir / "ArubaMMCleanupGUI.exe"
         env = os.environ.copy()
         env["ARUBA_MM_CLEANUP_GUI_SMOKE"] = "1"
-        completed = subprocess.run(
-            [str(gui_exe)],
-            capture_output=True,
-            text=True,
-            timeout=60,
-            check=False,
-            env=env,
-        )
+        try:
+            completed = subprocess.run(
+                [str(gui_exe)],
+                capture_output=True,
+                text=True,
+                timeout=60,
+                check=False,
+                env=env,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise SystemExit("GUI smoke command timed out after 60 seconds.") from exc
+        except OSError as exc:
+            raise SystemExit(f"GUI smoke command could not start: {exc}") from exc
         output = f"{completed.stdout}\n{completed.stderr}"
         if completed.returncode != 0:
             raise SystemExit(f"GUI smoke command failed with exit code {completed.returncode}:\n{output.strip()}")

@@ -9,7 +9,7 @@ from types import SimpleNamespace
 import pytest
 
 from aruba_mm_cleanup.cli import main as cli_main
-from tools.verify_release_package import _find_latest_zip, main as verifier_main
+from tools.verify_release_package import _find_latest_zip, _smoke_cli_help, _smoke_gui, main as verifier_main
 
 
 def test_release_zip_verifier_checks_required_files(tmp_path):
@@ -69,6 +69,42 @@ def test_release_zip_verifier_reports_inaccessible_zip_path(tmp_path, monkeypatc
         verifier_main(["--zip", str(zip_path)])
 
     assert "Release ZIP is not accessible" in str(exc_info.value)
+
+
+def test_release_zip_verifier_reports_cli_smoke_timeout(tmp_path, monkeypatch):
+    zip_path = tmp_path / "release.zip"
+    with zipfile.ZipFile(zip_path, "w") as archive:
+        archive.writestr("ArubaMMCleanupCLI.exe", "sample")
+
+    monkeypatch.setattr("tools.verify_release_package.platform.system", lambda: "Windows")
+
+    def timeout_run(*_args, **_kwargs):
+        raise subprocess.TimeoutExpired(["ArubaMMCleanupCLI.exe", "--help"], 60)
+
+    monkeypatch.setattr("tools.verify_release_package.subprocess.run", timeout_run)
+
+    with pytest.raises(SystemExit) as exc_info:
+        _smoke_cli_help(zip_path, require=True)
+
+    assert "CLI smoke command timed out" in str(exc_info.value)
+
+
+def test_release_zip_verifier_reports_gui_smoke_launch_failure(tmp_path, monkeypatch):
+    zip_path = tmp_path / "release.zip"
+    with zipfile.ZipFile(zip_path, "w") as archive:
+        archive.writestr("ArubaMMCleanupGUI.exe", "sample")
+
+    monkeypatch.setattr("tools.verify_release_package.platform.system", lambda: "Windows")
+
+    def failing_run(*_args, **_kwargs):
+        raise OSError("launch denied")
+
+    monkeypatch.setattr("tools.verify_release_package.subprocess.run", failing_run)
+
+    with pytest.raises(SystemExit) as exc_info:
+        _smoke_gui(zip_path, require=True)
+
+    assert "GUI smoke command could not start" in str(exc_info.value)
 
 
 def test_cli_help_distinguishes_timeout_from_delete_delay():
