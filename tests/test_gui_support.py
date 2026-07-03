@@ -1116,6 +1116,27 @@ def test_set_row_status_handles_unprintable_existing_message():
     assert values[4] == "timeout"
 
 
+def test_set_row_status_handles_unprintable_update_message():
+    class BadMessage:
+        def __str__(self):
+            raise RuntimeError("bad message")
+
+    app = make_headless_gui()
+    app.table = FakeTreeTable()
+    app.table.insert(
+        "",
+        "end",
+        iid="aa:bb:cc:00:00:01",
+        values=("aa:bb:cc:00:00:01", "삭제 대상", "2026-07-02 13:00:00", "", TYPE_NA_MESSAGE),
+    )
+
+    ArubaMmCleanupGui._set_row_status(app, "aa:bb:cc:00:00:01", "확인 필요", BadMessage())  # type: ignore[arg-type]
+
+    values = app.table.rows["aa:bb:cc:00:00:01"]["values"]
+    assert values[1] == "확인 필요"
+    assert values[4] == TYPE_NA_MESSAGE
+
+
 def test_set_all_pending_status_skips_malformed_rows_and_updates_valid_rows():
     app = make_headless_gui()
     app.table = FakeTreeTable()

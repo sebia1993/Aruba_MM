@@ -1691,7 +1691,14 @@ def _unique_display_macs(macs: list[str]) -> list[str]:
 
 def _merge_status_message(existing: str, update: str) -> str:
     has_type_na_message = TYPE_NA_MESSAGE in existing
-    update = update.strip()
+    try:
+        update = update.strip()
+    except Exception:
+        update = _safe_text(update)
+        try:
+            update = update.strip()
+        except Exception:
+            update = ""
     if has_type_na_message and update:
         return f"{TYPE_NA_MESSAGE} | {update}"
     if has_type_na_message:
