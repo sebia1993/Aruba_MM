@@ -174,6 +174,16 @@ class DestroyedTreeTable(FakeTreeTable):
         raise tk.TclError("invalid command name")
 
 
+class UnexpectedItemFailingTreeTable(FakeTreeTable):
+    def item(self, item, option=None, **kwargs):
+        raise RuntimeError("table item failed")
+
+
+class UnexpectedExistsFailingTreeTable(FakeTreeTable):
+    def exists(self, item):
+        raise RuntimeError("table exists failed")
+
+
 class IdentifyFailingTreeTable(FakeTreeTable):
     def identify_column(self, _x):
         raise tk.TclError("invalid command name")
@@ -1263,6 +1273,30 @@ def test_set_row_status_handles_unprintable_update_message():
     values = app.table.rows["aa:bb:cc:00:00:01"]["values"]
     assert values[1] == "확인 필요"
     assert values[4] == TYPE_NA_MESSAGE
+
+
+def test_set_row_status_ignores_unexpected_exists_failure():
+    app = make_headless_gui()
+    app.table = UnexpectedExistsFailingTreeTable()
+
+    ArubaMmCleanupGui._set_row_status(app, "aa:bb:cc:00:00:01", "삭제 완료", "")
+
+    assert app.table.rows == {}
+
+
+def test_set_row_status_ignores_unexpected_item_failure():
+    app = make_headless_gui()
+    app.table = UnexpectedItemFailingTreeTable()
+    app.table.insert(
+        "",
+        "end",
+        iid="aa:bb:cc:00:00:01",
+        values=("aa:bb:cc:00:00:01", "삭제 대상", "2026-07-02 13:00:00", "", ""),
+    )
+
+    ArubaMmCleanupGui._set_row_status(app, "aa:bb:cc:00:00:01", "삭제 완료", "")
+
+    assert app.table.rows["aa:bb:cc:00:00:01"]["values"][1] == "삭제 대상"
 
 
 def test_set_all_pending_status_skips_malformed_rows_and_updates_valid_rows():

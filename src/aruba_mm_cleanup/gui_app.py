@@ -1178,7 +1178,7 @@ class ArubaMmCleanupGui(tk.Tk):
             if not mac or not self.table.exists(mac):
                 return
             values = list(self.table.item(mac, "values"))
-        except (tk.TclError, TypeError):
+        except Exception:
             return
         if len(values) < 5:
             return
@@ -1193,7 +1193,7 @@ class ArubaMmCleanupGui(tk.Tk):
         try:
             self.table.item(mac, values=values)
             self.table.item(mac, tags=("reappeared",) if status == "재조회됨" else ())
-        except tk.TclError:
+        except Exception:
             return
 
     def _mark_reappeared_rows(self, macs: list[str]) -> None:
