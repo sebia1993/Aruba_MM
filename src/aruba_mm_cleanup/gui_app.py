@@ -916,7 +916,7 @@ class ArubaMmCleanupGui(tk.Tk):
         if event == "connect_start":
             try:
                 self.status_var.set("MM 접속 중")
-            except tk.TclError:
+            except Exception:
                 pass
             raw_host = payload.get("host")
             host = "None" if raw_host is None else (_safe_text(raw_host) or raw_host.__class__.__name__)
@@ -924,7 +924,7 @@ class ArubaMmCleanupGui(tk.Tk):
         elif event == "connect_done":
             try:
                 self.status_var.set("MM 세션 연결됨")
-            except tk.TclError:
+            except Exception:
                 pass
             raw_host = payload.get("host")
             host = "None" if raw_host is None else (_safe_text(raw_host) or raw_host.__class__.__name__)
@@ -932,7 +932,7 @@ class ArubaMmCleanupGui(tk.Tk):
         elif event == "session_reconnect_start":
             try:
                 self.status_var.set("MM 세션 재접속 중")
-            except tk.TclError:
+            except Exception:
                 pass
             raw_command = payload.get("command")
             raw_error = payload.get("error")
@@ -942,7 +942,7 @@ class ArubaMmCleanupGui(tk.Tk):
         elif event == "session_disconnected":
             try:
                 self.status_var.set("세션 연결 해제")
-            except tk.TclError:
+            except Exception:
                 pass
             raw_reason = payload.get("reason")
             reason = "None" if raw_reason is None else (_safe_text(raw_reason) or raw_reason.__class__.__name__)
@@ -956,7 +956,7 @@ class ArubaMmCleanupGui(tk.Tk):
         elif event == "query_start":
             try:
                 self.status_var.set("global-user-table 조회 중")
-            except tk.TclError:
+            except Exception:
                 pass
             self._set_timer("실행 중", "조회 처리")
             raw_command = payload.get("command")
@@ -1003,7 +1003,7 @@ class ArubaMmCleanupGui(tk.Tk):
             self._set_timer(f"{remaining}s", "삭제 시작 대기" if remaining > 0 else "삭제 시작")
             try:
                 self.status_var.set(f"{remaining}초 후 삭제 시작" if remaining > 0 else "삭제 시작")
-            except tk.TclError:
+            except Exception:
                 pass
             try:
                 self.cancel_button.configure(state="normal" if remaining > 0 else "disabled")
@@ -1012,7 +1012,7 @@ class ArubaMmCleanupGui(tk.Tk):
         elif event == "delete_start":
             try:
                 self.status_var.set("MAC 삭제 중")
-            except tk.TclError:
+            except Exception:
                 pass
             self._set_timer("실행 중", "삭제 처리")
             raw_mac = payload.get("mac")
@@ -1049,7 +1049,7 @@ class ArubaMmCleanupGui(tk.Tk):
                         continue
             try:
                 self.status_var.set("삭제 MAC 재조회됨")
-            except tk.TclError:
+            except Exception:
                 pass
             self._mark_reappeared_rows(macs)
             for mac in macs:
@@ -1057,7 +1057,7 @@ class ArubaMmCleanupGui(tk.Tk):
         elif event == "delete_canceled":
             try:
                 self.status_var.set("이번 삭제 취소됨")
-            except tk.TclError:
+            except Exception:
                 pass
             self._set_timer("-", "대기")
             try:
@@ -1069,7 +1069,7 @@ class ArubaMmCleanupGui(tk.Tk):
         elif event == "run_error":
             try:
                 self.status_var.set("실패")
-            except tk.TclError:
+            except Exception:
                 pass
             self._set_timer("-", "대기")
             try:

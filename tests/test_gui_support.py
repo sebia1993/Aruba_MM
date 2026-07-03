@@ -973,6 +973,15 @@ def test_progress_status_update_failure_does_not_skip_followup_work():
     assert "CONNECT: 192.0.2.10" in app.logs
 
 
+def test_progress_unexpected_status_update_failure_does_not_skip_followup_work():
+    app = make_headless_gui()
+    app.status_var = UnexpectedSetFailingVar()
+
+    ArubaMmCleanupGui._handle_progress(app, "connect_start", {"host": "192.0.2.10"})
+
+    assert "CONNECT: 192.0.2.10" in app.logs
+
+
 def test_connection_progress_handles_unprintable_payload_without_losing_log():
     app = make_headless_gui()
 
@@ -1234,6 +1243,16 @@ def test_reappeared_macs_skips_bad_mac_text_without_stopping_highlight():
     )
 
     assert app.status_var.get() == "삭제 MAC 재조회됨"
+    assert app.reappeared_rows == [["aa:bb:cc:00:00:01"]]
+    assert "REAPPEARED: aa:bb:cc:00:00:01" in app.logs
+
+
+def test_reappeared_macs_unexpected_status_update_failure_still_marks_rows():
+    app = make_headless_gui()
+    app.status_var = UnexpectedSetFailingVar()
+
+    app._handle_progress("reappeared_macs", {"macs": ["aa:bb:cc:00:00:01"]})
+
     assert app.reappeared_rows == [["aa:bb:cc:00:00:01"]]
     assert "REAPPEARED: aa:bb:cc:00:00:01" in app.logs
 
