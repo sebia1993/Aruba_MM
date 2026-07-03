@@ -416,14 +416,19 @@ def append_history_records(summary: CleanupRunSummary, *, output_dir: Path, host
     output_dir.mkdir(parents=True, exist_ok=True)
     path = output_dir / HISTORY_FILE_NAME
     run_at = _safe_timestamp_text(getattr(summary, "started_at", None))
+    try:
+        role = _safe_text(summary.role)
+    except Exception:
+        role = ""
+    host_text = _safe_text(host)
     lines: list[str] = []
     for item in delete_results:
         if not isinstance(item, DeleteResult):
             continue
         record = {
             "run_at": run_at,
-            "host": host,
-            "role": summary.role,
+            "host": host_text,
+            "role": role,
             "mac": item.mac,
             "result": _history_result_label(item),
             "success": item.success,
