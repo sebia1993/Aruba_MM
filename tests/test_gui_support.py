@@ -86,6 +86,11 @@ class FailingConfigureButton(FakeButton):
         raise tk.TclError("invalid command name")
 
 
+class UnexpectedConfigureFailingButton(FakeButton):
+    def configure(self, **_kwargs):
+        raise RuntimeError("button configure failed")
+
+
 class FakeSettingsFrame:
     def __init__(self):
         self.hidden = False
@@ -1499,6 +1504,19 @@ def test_running_state_button_failure_still_updates_timer():
     app.manual_button = FailingConfigureButton()
     app.schedule_button = FailingConfigureButton()
     app.cancel_button = FailingConfigureButton()
+
+    ArubaMmCleanupGui._set_running(app, True)
+
+    assert app.is_running is True
+    assert app.timers[-1] == ("실행 중", "조회/삭제 처리")
+    assert app.current_run_query_counted is False
+
+
+def test_running_state_unexpected_button_failure_still_updates_timer():
+    app = make_headless_gui()
+    app.manual_button = UnexpectedConfigureFailingButton()
+    app.schedule_button = UnexpectedConfigureFailingButton()
+    app.cancel_button = UnexpectedConfigureFailingButton()
 
     ArubaMmCleanupGui._set_running(app, True)
 
