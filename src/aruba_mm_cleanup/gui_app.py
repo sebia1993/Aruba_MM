@@ -531,7 +531,11 @@ class ArubaMmCleanupGui(tk.Tk):
                 self.output_dir_var.set(selected)
             except tk.TclError:
                 return
-            self._load_history_from_output_dir(Path(selected), force=True)
+            try:
+                self._load_history_from_output_dir(Path(selected), force=True)
+            except Exception as exc:
+                error = _safe_text(exc) or exc.__class__.__name__
+                self._log(f"WARNING: 이력 로드 실패 - {error}")
 
     def start_manual_run(self) -> None:
         if self.closing or self.is_running:

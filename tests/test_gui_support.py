@@ -567,6 +567,24 @@ def test_browse_output_dir_ignores_destroyed_output_dir_set(monkeypatch):
     assert loaded == []
 
 
+def test_browse_output_dir_logs_history_load_failure(monkeypatch):
+    app = make_headless_gui()
+    app.output_dir_var = FakeVar("/tmp/current")
+    monkeypatch.setattr(
+        gui_app_module.filedialog,
+        "askdirectory",
+        lambda **_kwargs: "/tmp/selected",
+    )
+    app._load_history_from_output_dir = lambda *_args, **_kwargs: (_ for _ in ()).throw(
+        RuntimeError("history load failed")
+    )
+
+    ArubaMmCleanupGui.browse_output_dir(app)
+
+    assert app.output_dir_var.get() == "/tmp/selected"
+    assert "WARNING: 이력 로드 실패 - history load failed" in app.logs
+
+
 def test_manual_run_input_error_dialog_failure_does_not_start_worker(monkeypatch):
     app = make_headless_gui()
     app._read_inputs = lambda: (_ for _ in ()).throw(ValueError("bad input"))
