@@ -1083,11 +1083,13 @@ class ArubaMmCleanupGui(tk.Tk):
         target_macs = summary_value("target_macs", [])
         if target_macs is None:
             target_macs = []
-        target_count = (
-            len(target_macs)
-            if isinstance(target_macs, (list, tuple, set)) and target_macs
-            else _safe_int(summary_value("queried_count", 0))
-        )
+        target_count = _safe_int(summary_value("queried_count", 0))
+        if isinstance(target_macs, (list, tuple, set)):
+            try:
+                if target_macs:
+                    target_count = len(target_macs)
+            except Exception:
+                pass
         if not self.current_run_query_counted:
             self._count_current_query(target_count)
         if not self.current_run_delete_counted:

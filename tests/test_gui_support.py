@@ -2913,6 +2913,33 @@ def test_summary_ignores_string_target_macs_without_character_counting():
     assert app.status_var.get() == "완료"
 
 
+def test_summary_uses_queried_count_when_target_macs_length_fails():
+    class UnreadableTargetMacs(list):
+        def __len__(self):
+            raise RuntimeError("bad target macs length")
+
+    app = make_headless_gui()
+    summary = SimpleNamespace(
+        target_macs=UnreadableTargetMacs(["aa:bb:cc:00:00:01"]),
+        queried_count=2,
+        delete_success_count=0,
+        reappeared_count=0,
+        verification_skipped=False,
+        error="",
+        canceled=False,
+        reappeared_macs=[],
+        audit_path=None,
+        audit_error="",
+        history_error="",
+    )
+
+    app._handle_summary(summary)
+
+    assert app.counter_vars["queried"].get() == "9"
+    assert app.status_var.get() == "완료"
+    assert app.history_summaries == [summary]
+
+
 def test_summary_ignores_string_reappeared_macs_without_character_rows():
     app = make_headless_gui()
     summary = SimpleNamespace(
