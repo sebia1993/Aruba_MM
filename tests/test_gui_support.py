@@ -1417,6 +1417,19 @@ def test_drain_events_handles_missing_progress_payload_as_empty_dict():
     assert not any("이벤트 처리 실패(progress)" in message for message in app.logs)
 
 
+def test_drain_events_handles_unprintable_progress_event_name():
+    class BadProgressEvent:
+        def __str__(self):
+            raise RuntimeError("bad progress event")
+
+    app = make_headless_gui()
+    app.event_queue.put(("progress", (BadProgressEvent(), {})))
+
+    ArubaMmCleanupGui._drain_events(app)
+
+    assert not any("이벤트 처리 실패(progress)" in message for message in app.logs)
+
+
 def test_drain_events_treats_unreadable_running_payload_as_stopped():
     class BadRunning:
         def __bool__(self):
