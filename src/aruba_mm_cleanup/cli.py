@@ -70,17 +70,33 @@ def main(argv: Optional[list[str]] = None) -> int:
             print(f"{event}: {payload}")
 
     summary = runner.run_once(config, settings, output_dir=args.output_dir.expanduser(), progress_callback=progress)
-    print(f"Queried: {summary.queried_count}")
-    print(f"Deleted: {summary.delete_success_count}")
-    print(f"Failed: {summary.delete_failure_count}")
-    print(f"Remaining: {summary.remaining_count}")
-    print(f"Reappeared: {summary.reappeared_count}")
-    print(f"Audit: {summary.audit_path}")
-    if summary.audit_error:
-        print(f"Audit warning: {summary.audit_error}")
-    if summary.history_error:
-        print(f"History warning: {summary.history_error}")
-    return 1 if summary.error or summary.delete_failure_count or summary.reappeared_count else 0
+    queried_count = _summary_value(summary, "queried_count", 0)
+    delete_success_count = _summary_value(summary, "delete_success_count", 0)
+    delete_failure_count = _summary_value(summary, "delete_failure_count", 0)
+    remaining_count = _summary_value(summary, "remaining_count", 0)
+    reappeared_count = _summary_value(summary, "reappeared_count", 0)
+    audit_path = _summary_value(summary, "audit_path", None)
+    audit_error = _summary_value(summary, "audit_error", "")
+    history_error = _summary_value(summary, "history_error", "")
+    error = _summary_value(summary, "error", "summary unavailable")
+    print(f"Queried: {queried_count}")
+    print(f"Deleted: {delete_success_count}")
+    print(f"Failed: {delete_failure_count}")
+    print(f"Remaining: {remaining_count}")
+    print(f"Reappeared: {reappeared_count}")
+    print(f"Audit: {audit_path}")
+    if audit_error:
+        print(f"Audit warning: {audit_error}")
+    if history_error:
+        print(f"History warning: {history_error}")
+    return 1 if error or delete_failure_count or reappeared_count else 0
+
+
+def _summary_value(summary: object, name: str, default: object) -> object:
+    try:
+        return getattr(summary, name, default)
+    except Exception:
+        return default
 
 
 if __name__ == "__main__":

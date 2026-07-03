@@ -229,6 +229,63 @@ def test_cli_reports_history_save_warning(monkeypatch, capsys, tmp_path):
     assert "History warning: history write failed" in output
 
 
+def test_cli_handles_malformed_summary_without_attribute_error(monkeypatch, capsys):
+    class MalformedSummary:
+        queried_count = 0
+        remaining_count = 0
+        audit_path = None
+
+        @property
+        def delete_success_count(self):
+            raise RuntimeError("bad delete success count")
+
+        @property
+        def delete_failure_count(self):
+            raise RuntimeError("bad delete failure count")
+
+        @property
+        def reappeared_count(self):
+            raise RuntimeError("bad reappeared count")
+
+        @property
+        def audit_error(self):
+            raise RuntimeError("bad audit error")
+
+        @property
+        def history_error(self):
+            raise RuntimeError("bad history error")
+
+        @property
+        def error(self):
+            raise RuntimeError("bad summary error")
+
+    class FakeRunner:
+        def run_once(self, *_args, **_kwargs):
+            return MalformedSummary()
+
+    monkeypatch.setattr("aruba_mm_cleanup.cli.MmCleanupRunner", lambda: FakeRunner())
+
+    result = cli_main(
+        [
+            "--host",
+            "192.0.2.10",
+            "--username",
+            "admin",
+            "--password",
+            "secret",
+            "--yes",
+        ]
+    )
+
+    output = capsys.readouterr().out
+    assert result == 1
+    assert "Queried: 0" in output
+    assert "Deleted: 0" in output
+    assert "Failed: 0" in output
+    assert "Remaining: 0" in output
+    assert "Reappeared: 0" in output
+
+
 def test_cli_expands_user_home_output_dir(monkeypatch):
     captured = {}
 
