@@ -220,8 +220,7 @@ class MmCleanupRunner:
                 summary.canceled = True
                 summary.verification_skipped = True
                 summary.delete_results = _safe_list_items(summary.delete_results)
-                summary.delete_success_count = sum(1 for item in summary.delete_results if item.success)
-                summary.delete_failure_count = sum(1 for item in summary.delete_results if not item.success)
+                summary.delete_success_count, summary.delete_failure_count = _count_delete_results(summary.delete_results)
                 summary.remaining_count = max(summary.queried_count - summary.delete_success_count, 0)
                 self._emit(progress_callback, "delete_canceled", count=max(len(summary.target_macs) - len(summary.delete_results), 0))
                 return self._finalize_summary(summary, output_dir=output_dir, host=config.host, progress_callback=progress_callback)
@@ -236,8 +235,7 @@ class MmCleanupRunner:
                 summary.canceled = True
                 summary.verification_skipped = True
                 summary.delete_results = _safe_list_items(summary.delete_results)
-                summary.delete_success_count = sum(1 for item in summary.delete_results if item.success)
-                summary.delete_failure_count = sum(1 for item in summary.delete_results if not item.success)
+                summary.delete_success_count, summary.delete_failure_count = _count_delete_results(summary.delete_results)
                 summary.remaining_count = max(summary.queried_count - summary.delete_success_count, 0)
                 self._emit(progress_callback, "delete_canceled", count=0)
                 return self._finalize_summary(summary, output_dir=output_dir, host=config.host, progress_callback=progress_callback)
@@ -674,6 +672,24 @@ def _delete_event_name(status: str) -> str:
     if status == "failed":
         return "delete_error"
     return "delete_unknown"
+
+
+def _delete_result_success(item: object) -> bool:
+    try:
+        return bool(item.success)  # type: ignore[attr-defined]
+    except Exception:
+        return False
+
+
+def _count_delete_results(results: list[object]) -> tuple[int, int]:
+    success_count = 0
+    failure_count = 0
+    for item in results:
+        if _delete_result_success(item):
+            success_count += 1
+        else:
+            failure_count += 1
+    return success_count, failure_count
 
 
 def _history_result_label(item: DeleteResult) -> str:

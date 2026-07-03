@@ -1041,6 +1041,46 @@ def test_run_once_cancel_after_delete_tolerates_unreadable_delete_results(tmp_pa
     assert summary.delete_failure_count == 0
 
 
+def test_run_once_cancel_after_delete_treats_unreadable_success_as_failure(tmp_path):
+    class BadSuccess:
+        def __bool__(self):
+            raise RuntimeError("bad success bool")
+
+    first_query = "10.1.1.10 aa:bb:cc:00:00:01 user-a profiling"
+    connection = FakeConnection(
+        responses={
+            "no paging": "",
+            "show global-user-table list role profiling": [first_query],
+        }
+    )
+    runner = MmCleanupRunner(
+        connection_factory=lambda _config, _timeout: connection,
+        sleep_func=lambda _seconds: None,
+    )
+    runner._delete_macs = lambda *_args, **_kwargs: [  # type: ignore[method-assign]
+        DeleteResult(
+            mac="aa:bb:cc:00:00:01",
+            success=BadSuccess(),  # type: ignore[arg-type]
+            command="cmd",
+            status="unknown",
+            response_status="unknown",
+        )
+    ]
+    checks = iter([False, False, True])
+
+    summary = runner.run_once(
+        MmConnectionConfig(host="192.0.2.10", username="admin", password="secret"),
+        CleanupSettings(role="profiling", timeout=5, delete_delay_seconds=0),
+        output_dir=tmp_path,
+        should_cancel=lambda: next(checks, True),
+    )
+
+    assert summary.error == ""
+    assert summary.canceled is True
+    assert summary.delete_success_count == 0
+    assert summary.delete_failure_count == 1
+
+
 def test_zero_query_writes_audit_without_delete(tmp_path):
     query_conn = FakeConnection(responses={"no paging": "", "show global-user-table list role profiling": ""})
     runner = MmCleanupRunner(
