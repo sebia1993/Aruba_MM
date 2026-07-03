@@ -75,6 +75,18 @@ class MissingCommandConnection:
         self.disconnected = True
 
 
+class FailingCommandAttributeConnection:
+    def __init__(self):
+        self.disconnected = False
+
+    @property
+    def send_command_timing(self):
+        raise RuntimeError("bad command attribute")
+
+    def disconnect(self):
+        self.disconnected = True
+
+
 def test_build_commands_use_role_and_mac():
     assert build_query_command("profiling") == "show global-user-table list role profiling"
     assert build_delete_command("aa:bb:cc:00:00:01") == "aaa user delete mac aa:bb:cc:00:00:01"
@@ -227,6 +239,31 @@ def test_session_rejects_invalid_connection_object_and_clears_state():
         assert "MM 연결 객체" in str(exc)
     else:
         raise AssertionError("session should reject invalid connection objects")
+
+    assert connection.disconnected is True
+    assert session.is_connected is False
+    assert ("connect_start", {"host": "192.0.2.10"}) in events
+    assert not any(event == "connect_done" for event, _payload in events)
+
+
+def test_session_cleans_up_when_command_attribute_check_fails():
+    connection = FailingCommandAttributeConnection()
+    events = []
+    session = MmSession(connection_factory=lambda _config, _timeout: connection)  # type: ignore[arg-type]
+    config = MmConnectionConfig(host="192.0.2.10", username="admin", password="secret")
+    settings = CleanupSettings(role="profiling", timeout=5, delete_delay_seconds=0)
+
+    try:
+        session.run_command(
+            config,
+            settings,
+            "show version",
+            progress_callback=lambda event, payload: events.append((event, payload)),
+        )
+    except RuntimeError as exc:
+        assert "MM 연결 객체" in str(exc)
+    else:
+        raise AssertionError("session should reject broken connection attribute access")
 
     assert connection.disconnected is True
     assert session.is_connected is False
