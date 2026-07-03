@@ -247,8 +247,7 @@ class MmCleanupRunner:
             except Exception:
                 summary.remaining_count = len(_unique_macs(verify.macs))
             summary.delete_results = _apply_verification(summary.delete_results, verify.macs)
-            summary.delete_success_count = sum(1 for item in summary.delete_results if item.success)
-            summary.delete_failure_count = sum(1 for item in summary.delete_results if not item.success)
+            summary.delete_success_count, summary.delete_failure_count = _count_delete_results(summary.delete_results)
             summary.reappeared_macs = _reappeared_deleted_macs(summary.delete_results, verify.macs)
             summary.reappeared_count = len(summary.reappeared_macs)
             if summary.reappeared_macs:
@@ -645,21 +644,36 @@ def _apply_verification(delete_results: list[DeleteResult], verify_macs: list[st
     remaining = set(_unique_macs(verify_macs))
     verified: list[DeleteResult] = []
     for item in _safe_list_items(delete_results):
-        response_status = _safe_text(item.response_status) or _safe_text(item.status)
+        if not isinstance(item, DeleteResult):
+            verified.append(
+                DeleteResult(
+                    mac=_safe_text(_safe_attr(item, "mac", "")),
+                    success=False,
+                    command=_safe_text(_safe_attr(item, "command", "")),
+                    error="확인 필요: 삭제 결과 형식 오류",
+                    status="unknown",
+                    response_status="unknown",
+                    verified_absent=None,
+                )
+            )
+            continue
+        response_status = _safe_text(_safe_attr(item, "response_status", "")) or _safe_text(
+            _safe_attr(item, "status", "")
+        )
         try:
             item_mac = item.mac if isinstance(item.mac, str) else ""
             comparable_mac = normalize_mac(item_mac) or item_mac.strip().casefold()
         except Exception:
             comparable_mac = ""
         if not comparable_mac:
-            error = item.error or "확인 필요: 삭제 결과 MAC 오류"
+            error = _safe_text(_safe_attr(item, "error", "")) or "확인 필요: 삭제 결과 MAC 오류"
             verified.append(replace(item, success=False, status="unknown", error=error, verified_absent=None))
             continue
         absent = comparable_mac not in remaining
         if response_status == "deleted" and absent:
             verified.append(replace(item, success=True, status="verified_deleted", verified_absent=True))
         elif response_status == "deleted":
-            error = item.error or "삭제 응답은 성공이었지만 검증 조회에서 다시 발견"
+            error = _safe_text(_safe_attr(item, "error", "")) or "삭제 응답은 성공이었지만 검증 조회에서 다시 발견"
             verified.append(replace(item, success=False, status="reappeared", error=error, verified_absent=False))
         else:
             verified.append(replace(item, success=False, status=response_status or "unknown", verified_absent=absent))

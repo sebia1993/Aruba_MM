@@ -841,6 +841,39 @@ def test_run_once_verification_tolerates_unreadable_delete_results(tmp_path):
     assert summary.delete_failure_count == 0
 
 
+def test_run_once_verification_treats_malformed_delete_result_as_failure(tmp_path):
+    class MalformedDeleteResult:
+        mac = "aa:bb:cc:00:00:01"
+        command = "cmd"
+
+    first_query = "10.1.1.10 aa:bb:cc:00:00:01 user-a profiling"
+    connection = FakeConnection(
+        responses={
+            "no paging": "",
+            "show global-user-table list role profiling": [first_query, ""],
+        }
+    )
+    runner = MmCleanupRunner(
+        connection_factory=lambda _config, _timeout: connection,
+        sleep_func=lambda _seconds: None,
+    )
+    runner._delete_macs = lambda *_args, **_kwargs: [MalformedDeleteResult()]  # type: ignore[method-assign]
+
+    summary = runner.run_once(
+        MmConnectionConfig(host="192.0.2.10", username="admin", password="secret"),
+        CleanupSettings(role="profiling", timeout=5, delete_delay_seconds=0),
+        output_dir=tmp_path,
+    )
+
+    assert summary.error == ""
+    assert summary.delete_success_count == 0
+    assert summary.delete_failure_count == 1
+    assert summary.delete_results[0].mac == "aa:bb:cc:00:00:01"
+    assert summary.delete_results[0].status == "unknown"
+    assert summary.delete_results[0].verified_absent is None
+    assert "삭제 결과 형식 오류" in summary.delete_results[0].error
+
+
 def test_run_once_can_cancel_during_countdown(tmp_path):
     first_query = "10.1.1.10 aa:bb:cc:00:00:01 user-a profiling"
     query_conn = FakeConnection(
