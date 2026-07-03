@@ -566,7 +566,7 @@ def _apply_verification(delete_results: list[DeleteResult], verify_macs: list[st
     remaining = set(_unique_macs(verify_macs))
     verified: list[DeleteResult] = []
     for item in delete_results:
-        response_status = item.response_status or item.status
+        response_status = _safe_text(item.response_status) or _safe_text(item.status)
         try:
             item_mac = item.mac if isinstance(item.mac, str) else ""
             comparable_mac = normalize_mac(item_mac) or item_mac.strip().casefold()

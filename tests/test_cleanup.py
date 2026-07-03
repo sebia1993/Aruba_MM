@@ -605,6 +605,51 @@ def test_run_once_verification_handles_malformed_delete_result_mac(tmp_path):
     assert "삭제 결과 MAC 오류" in summary.delete_results[0].error
 
 
+def test_run_once_verification_handles_unprintable_delete_result_status(tmp_path):
+    class BadStatus:
+        def __bool__(self):
+            raise RuntimeError("bad status bool")
+
+        def __str__(self):
+            raise RuntimeError("bad status str")
+
+        def __repr__(self):
+            raise RuntimeError("bad status repr")
+
+    first_query = "10.1.1.10 aa:bb:cc:00:00:01 user-a profiling"
+    connection = FakeConnection(
+        responses={
+            "no paging": "",
+            "show global-user-table list role profiling": [first_query, ""],
+        }
+    )
+    runner = MmCleanupRunner(
+        connection_factory=lambda _config, _timeout: connection,
+        sleep_func=lambda _seconds: None,
+    )
+    runner._delete_macs = lambda *_args, **_kwargs: [  # type: ignore[method-assign]
+        DeleteResult(
+            mac="aa:bb:cc:00:00:01",
+            success=True,
+            command="cmd",
+            status="",
+            response_status=BadStatus(),  # type: ignore[arg-type]
+        )
+    ]
+
+    summary = runner.run_once(
+        MmConnectionConfig(host="192.0.2.10", username="admin", password="secret"),
+        CleanupSettings(role="profiling", timeout=5, delete_delay_seconds=0),
+        output_dir=tmp_path,
+    )
+
+    assert summary.error == ""
+    assert summary.delete_success_count == 0
+    assert summary.delete_failure_count == 1
+    assert summary.delete_results[0].status == "unknown"
+    assert summary.delete_results[0].verified_absent is True
+
+
 def test_run_once_can_cancel_during_countdown(tmp_path):
     first_query = "10.1.1.10 aa:bb:cc:00:00:01 user-a profiling"
     query_conn = FakeConnection(
