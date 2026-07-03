@@ -685,19 +685,19 @@ class ArubaMmCleanupGui(tk.Tk):
         if self._drain_after_id is not None:
             try:
                 self.after_cancel(self._drain_after_id)
-            except tk.TclError:
+            except Exception:
                 pass
             self._drain_after_id = None
         if self.copy_notice_after_id is not None:
             try:
                 self.after_cancel(self.copy_notice_after_id)
-            except tk.TclError:
+            except Exception:
                 pass
             self.copy_notice_after_id = None
         self._start_session_close(reason="app_close", enqueue_progress=False)
         try:
             self.after(SHUTDOWN_GRACE_MS, self._destroy_window)
-        except tk.TclError:
+        except Exception:
             self._destroy_window()
 
     def _scheduler_loop(
@@ -1645,7 +1645,7 @@ class ArubaMmCleanupGui(tk.Tk):
         if self.copy_notice_after_id is not None:
             try:
                 self.after_cancel(self.copy_notice_after_id)
-            except tk.TclError:
+            except Exception:
                 pass
         try:
             self.copy_notice_title_var.set("복사 완료")
@@ -1663,7 +1663,7 @@ class ArubaMmCleanupGui(tk.Tk):
                 pass
         try:
             self.copy_notice_after_id = self.after(1000, self._hide_copy_notice)
-        except tk.TclError:
+        except Exception:
             self.copy_notice_after_id = None
 
     def _hide_copy_notice(self) -> None:
@@ -1760,7 +1760,7 @@ def main() -> int:
         if app._drain_after_id is not None:
             try:
                 app.after_cancel(app._drain_after_id)
-            except tk.TclError:
+            except Exception:
                 pass
         app._destroy_window()
         return 0

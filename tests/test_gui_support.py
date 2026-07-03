@@ -1699,6 +1699,59 @@ def test_on_close_destroys_window_when_shutdown_after_fails():
     assert destroy_calls == ["destroyed"]
 
 
+def test_on_close_continues_when_drain_after_cancel_unexpectedly_fails():
+    app = make_headless_gui()
+    app._drain_after_id = "drain-id"
+    app.copy_notice_after_id = None
+    close_calls = []
+    scheduled = []
+    app.after_cancel = lambda _after_id: (_ for _ in ()).throw(RuntimeError("after cancel failed"))
+    app.after = lambda ms, callback: scheduled.append((ms, callback)) or "shutdown-id"
+    app._start_session_close = lambda **kwargs: close_calls.append(kwargs)
+
+    ArubaMmCleanupGui.on_close(app)
+
+    assert app.closing is True
+    assert app._drain_after_id is None
+    assert close_calls == [{"reason": "app_close", "enqueue_progress": False}]
+    assert scheduled[0][0] == SHUTDOWN_GRACE_MS
+
+
+def test_on_close_continues_when_copy_notice_after_cancel_unexpectedly_fails():
+    app = make_headless_gui()
+    app._drain_after_id = None
+    app.copy_notice_after_id = "copy-notice-id"
+    close_calls = []
+    scheduled = []
+    app.after_cancel = lambda _after_id: (_ for _ in ()).throw(RuntimeError("after cancel failed"))
+    app.after = lambda ms, callback: scheduled.append((ms, callback)) or "shutdown-id"
+    app._start_session_close = lambda **kwargs: close_calls.append(kwargs)
+
+    ArubaMmCleanupGui.on_close(app)
+
+    assert app.closing is True
+    assert app.copy_notice_after_id is None
+    assert close_calls == [{"reason": "app_close", "enqueue_progress": False}]
+    assert scheduled[0][0] == SHUTDOWN_GRACE_MS
+
+
+def test_on_close_destroys_window_when_shutdown_after_unexpectedly_fails():
+    app = make_headless_gui()
+    app._drain_after_id = None
+    app.copy_notice_after_id = None
+    close_calls = []
+    destroy_calls = []
+    app.after = lambda _ms, _callback: (_ for _ in ()).throw(RuntimeError("after failed"))
+    app._start_session_close = lambda **kwargs: close_calls.append(kwargs)
+    app._destroy_window = lambda: destroy_calls.append("destroyed")
+
+    ArubaMmCleanupGui.on_close(app)
+
+    assert app.closing is True
+    assert close_calls == [{"reason": "app_close", "enqueue_progress": False}]
+    assert destroy_calls == ["destroyed"]
+
+
 def test_gui_smoke_main_uses_safe_destroy_when_destroy_raises(monkeypatch):
     class SmokeApp:
         def __init__(self):
@@ -1730,6 +1783,31 @@ def test_gui_smoke_main_uses_safe_destroy_when_destroy_raises(monkeypatch):
     assert gui_app_module.main() == 0
     assert app.closing is True
     assert app.canceled_after_ids == ["after-1"]
+    assert app.safe_destroy_calls == 1
+
+
+def test_gui_smoke_main_ignores_unexpected_after_cancel_failure(monkeypatch):
+    class SmokeApp:
+        def __init__(self):
+            self._drain_after_id = "after-1"
+            self.closing = False
+            self.safe_destroy_calls = 0
+
+        def update_idletasks(self):
+            pass
+
+        def after_cancel(self, _after_id):
+            raise RuntimeError("after cancel failed")
+
+        def _destroy_window(self):
+            self.safe_destroy_calls += 1
+
+    app = SmokeApp()
+    monkeypatch.setenv("ARUBA_MM_CLEANUP_GUI_SMOKE", "1")
+    monkeypatch.setattr(gui_app_module, "ArubaMmCleanupGui", lambda: app)
+
+    assert gui_app_module.main() == 0
+    assert app.closing is True
     assert app.safe_destroy_calls == 1
 
 
@@ -3436,6 +3514,47 @@ def test_mac_copy_notice_ignores_hide_timer_schedule_failure():
     assert app.copy_notice_mac_var.get() == "aa:bb:cc:00:00:01"
     assert app.copy_notice_frame.hidden is False
     assert app.copy_notice_after_id is None
+
+
+def test_mac_copy_notice_ignores_unexpected_hide_timer_schedule_failure():
+    app = make_headless_gui()
+    table = FakeTreeTable()
+    table.insert(
+        "",
+        "end",
+        iid="aa:bb:cc:00:00:01",
+        values=("aa:bb:cc:00:00:01", "삭제 대상", "2026-07-02 13:00:00", "", ""),
+    )
+    app.after = lambda _ms, _callback: (_ for _ in ()).throw(RuntimeError("after failed"))
+
+    ArubaMmCleanupGui._copy_mac_from_table_event(app, FakeClickEvent(), table, "#1")
+
+    assert app.clipboard_values == ["aa:bb:cc:00:00:01"]
+    assert app.copy_notice_title_var.get() == "복사 완료"
+    assert app.copy_notice_mac_var.get() == "aa:bb:cc:00:00:01"
+    assert app.copy_notice_frame.hidden is False
+    assert app.copy_notice_after_id is None
+
+
+def test_mac_copy_notice_ignores_unexpected_previous_timer_cancel_failure():
+    app = make_headless_gui()
+    table = FakeTreeTable()
+    table.insert(
+        "",
+        "end",
+        iid="aa:bb:cc:00:00:01",
+        values=("aa:bb:cc:00:00:01", "삭제 대상", "2026-07-02 13:00:00", "", ""),
+    )
+    app.copy_notice_after_id = "previous-after"
+    app.after_cancel = lambda _after_id: (_ for _ in ()).throw(RuntimeError("after cancel failed"))
+
+    ArubaMmCleanupGui._copy_mac_from_table_event(app, FakeClickEvent(), table, "#1")
+
+    assert app.clipboard_values == ["aa:bb:cc:00:00:01"]
+    assert app.copy_notice_title_var.get() == "복사 완료"
+    assert app.copy_notice_mac_var.get() == "aa:bb:cc:00:00:01"
+    assert app.copy_notice_frame.hidden is False
+    assert app.copy_notice_after_id == "after-1"
 
 
 def test_mac_copy_notice_ignores_overlay_place_failure():
