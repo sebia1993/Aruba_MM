@@ -1147,7 +1147,7 @@ class ArubaMmCleanupGui(tk.Tk):
                 self.status_var.set("삭제 MAC 재조회됨")
             else:
                 self.status_var.set("완료")
-        except tk.TclError:
+        except Exception:
             pass
         if reappeared_macs:
             self._mark_reappeared_rows(reappeared_macs)
