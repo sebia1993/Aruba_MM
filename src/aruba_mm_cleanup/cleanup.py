@@ -73,7 +73,16 @@ class MmCleanupRunner:
             return self._query_users(config, settings, progress_callback=progress_callback)
         finally:
             if not self.persistent_session:
-                self.close_session(progress_callback=progress_callback, reason="run_complete")
+                try:
+                    self.close_session(progress_callback=progress_callback, reason="run_complete")
+                except Exception as exc:
+                    error = _exception_text(exc)
+                    self._emit(
+                        progress_callback,
+                        "warning",
+                        message=f"session close failed: {error}",
+                        reason="run_complete",
+                    )
 
     def _query_users(
         self,

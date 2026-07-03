@@ -286,6 +286,33 @@ def test_session_no_paging_unprintable_failure_warns_and_allows_command():
     assert ("warning", {"message": "no paging failed: BadErrorText"}) in events
 
 
+def test_query_users_keeps_result_when_session_close_fails():
+    class FailingCloseSession:
+        def __init__(self):
+            self.disconnect_called = False
+
+        def run_command(self, *_args, **_kwargs):
+            return "10.1.1.10 aa:bb:cc:00:00:01 user-a profiling"
+
+        def disconnect(self, *_args, **_kwargs):
+            self.disconnect_called = True
+            raise RuntimeError("close failed")
+
+    session = FailingCloseSession()
+    events = []
+    runner = MmCleanupRunner(session=session)
+
+    query = runner.query_users(
+        MmConnectionConfig(host="192.0.2.10", username="admin", password="secret"),
+        CleanupSettings(role="profiling", timeout=5, delete_delay_seconds=0),
+        progress_callback=lambda event, payload: events.append((event, payload)),
+    )
+
+    assert query.macs == ["aa:bb:cc:00:00:01"]
+    assert session.disconnect_called is True
+    assert ("warning", {"message": "session close failed: close failed", "reason": "run_complete"}) in events
+
+
 def test_run_once_deletes_snapshot_and_verifies_remaining(tmp_path):
     first_query = "10.1.1.10 aa:bb:cc:00:00:01 user-a profiling\n10.1.1.11 aa:bb:cc:00:00:02 user-b profiling"
     verify_query = ""
