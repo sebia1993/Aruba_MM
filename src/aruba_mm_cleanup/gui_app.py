@@ -1311,7 +1311,17 @@ class ArubaMmCleanupGui(tk.Tk):
             if isinstance(raw_reappeared_macs, (list, tuple, set))
             else set()
         )
-        for item in delete_results:
+        try:
+            delete_results_iter = iter(delete_results)
+        except Exception:
+            return
+        while True:
+            try:
+                item = next(delete_results_iter)
+            except StopIteration:
+                break
+            except Exception:
+                break
             mac = safe_get(item, "mac", "")
             if not isinstance(mac, str) or not mac:
                 continue

@@ -2342,6 +2342,34 @@ def test_append_history_rows_ignores_missing_delete_results():
     assert app.history_table.get_children() == ()
 
 
+def test_append_history_rows_ignores_unreadable_delete_results():
+    class UnreadableDeleteResults(list):
+        def __iter__(self):
+            raise RuntimeError("bad delete results")
+
+    app = make_headless_gui()
+    app.history_table = FakeHistoryTable()
+    app.history_row_counter = 0
+    summary = SimpleNamespace(
+        started_at=datetime(2026, 7, 2, 13, 0, 0),
+        reappeared_macs=[],
+        delete_results=UnreadableDeleteResults(
+            [
+                SimpleNamespace(
+                    mac="aa:bb:cc:00:00:01",
+                    status="verified_deleted",
+                    success=True,
+                    error="",
+                )
+            ]
+        ),
+    )
+
+    ArubaMmCleanupGui._append_history_rows(app, summary)
+
+    assert app.history_table.get_children() == ()
+
+
 def test_append_history_rows_ignores_invalid_reappeared_mac_items():
     app = make_headless_gui()
     app.history_table = FakeHistoryTable()
