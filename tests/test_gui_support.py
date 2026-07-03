@@ -184,6 +184,19 @@ class UnexpectedExistsFailingTreeTable(FakeTreeTable):
         raise RuntimeError("table exists failed")
 
 
+class UnexpectedDeleteFailingTreeTable(FakeTreeTable):
+    def get_children(self):
+        return tuple(self.order)
+
+    def delete(self, *items):
+        raise RuntimeError("table delete failed")
+
+
+class UnexpectedInsertFailingTreeTable(FakeTreeTable):
+    def insert(self, _parent, _index, iid, values, tags=()):
+        raise RuntimeError("table insert failed")
+
+
 class IdentifyFailingTreeTable(FakeTreeTable):
     def identify_column(self, _x):
         raise tk.TclError("invalid command name")
@@ -1346,6 +1359,26 @@ def test_result_table_updates_ignore_destroyed_table():
     ArubaMmCleanupGui._set_row_status(app, "aa:bb:cc:00:00:01", "삭제 완료", "")
     ArubaMmCleanupGui._mark_reappeared_rows(app, ["aa:bb:cc:00:00:01"])
     ArubaMmCleanupGui._set_all_pending_status(app, "취소됨")
+
+    assert app.table.rows == {}
+
+
+def test_replace_table_ignores_unexpected_delete_failure():
+    app = make_headless_gui()
+    app.table = UnexpectedDeleteFailingTreeTable()
+    app.table.rows["old"] = {"values": ("old",), "tags": ()}
+    app.table.order.append("old")
+
+    ArubaMmCleanupGui._replace_table(app, ["aa:bb:cc:00:00:01"], "삭제 대상")
+
+    assert app.table.rows["old"]["values"] == ("old",)
+
+
+def test_replace_table_ignores_unexpected_insert_failure():
+    app = make_headless_gui()
+    app.table = UnexpectedInsertFailingTreeTable()
+
+    ArubaMmCleanupGui._replace_table(app, ["aa:bb:cc:00:00:01"], "삭제 대상")
 
     assert app.table.rows == {}
 

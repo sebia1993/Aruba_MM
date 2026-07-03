@@ -1162,7 +1162,7 @@ class ArubaMmCleanupGui(tk.Tk):
     def _replace_table(self, macs: list[str], status: str, *, type_na_macs: Optional[list[str]] = None) -> None:
         try:
             self.table.delete(*self.table.get_children())
-        except tk.TclError:
+        except Exception:
             return
         now = time.strftime("%Y-%m-%d %H:%M:%S")
         type_na_set = set(_unique_display_macs(type_na_macs or []))
@@ -1170,7 +1170,7 @@ class ArubaMmCleanupGui(tk.Tk):
             message = TYPE_NA_MESSAGE if mac in type_na_set else ""
             try:
                 self.table.insert("", "end", iid=mac, values=(mac, status, now, "", message))
-            except tk.TclError:
+            except Exception:
                 return
 
     def _set_row_status(self, mac: str, status: str, error: str) -> None:
