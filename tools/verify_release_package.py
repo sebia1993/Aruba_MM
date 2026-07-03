@@ -40,9 +40,17 @@ def main(argv: Optional[list[str]] = None) -> int:
     args = parser.parse_args(argv)
 
     zip_path = args.zip_path or _find_latest_zip(args.dist)
-    if not zip_path.exists():
+    try:
+        zip_exists = zip_path.exists()
+    except OSError as exc:
+        raise SystemExit(f"Release ZIP is not accessible: {zip_path}") from exc
+    if not zip_exists:
         raise SystemExit(f"Release ZIP does not exist: {zip_path}")
-    if zip_path.stat().st_size <= 0:
+    try:
+        zip_size = zip_path.stat().st_size
+    except OSError as exc:
+        raise SystemExit(f"Release ZIP is not accessible: {zip_path}") from exc
+    if zip_size <= 0:
         raise SystemExit(f"Release ZIP is empty: {zip_path}")
 
     names = _read_zip_names(zip_path)

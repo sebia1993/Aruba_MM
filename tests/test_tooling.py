@@ -6,8 +6,10 @@ import re
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from aruba_mm_cleanup.cli import main as cli_main
-from tools.verify_release_package import _find_latest_zip
+from tools.verify_release_package import _find_latest_zip, main as verifier_main
 
 
 def test_release_zip_verifier_checks_required_files(tmp_path):
@@ -50,6 +52,23 @@ def test_release_zip_verifier_ignores_disappearing_zip_candidates(tmp_path, monk
     monkeypatch.setattr(Path, "stat", flaky_stat)
 
     assert _find_latest_zip(tmp_path) == latest_zip
+
+
+def test_release_zip_verifier_reports_inaccessible_zip_path(tmp_path, monkeypatch):
+    zip_path = tmp_path / "release.zip"
+    original_exists = Path.exists
+
+    def inaccessible_exists(path):
+        if path == zip_path:
+            raise PermissionError("access denied")
+        return original_exists(path)
+
+    monkeypatch.setattr(Path, "exists", inaccessible_exists)
+
+    with pytest.raises(SystemExit) as exc_info:
+        verifier_main(["--zip", str(zip_path)])
+
+    assert "Release ZIP is not accessible" in str(exc_info.value)
 
 
 def test_cli_help_distinguishes_timeout_from_delete_delay():
