@@ -1621,7 +1621,7 @@ class ArubaMmCleanupGui(tk.Tk):
         try:
             self.clipboard_clear()
             self.clipboard_append(mac)
-        except tk.TclError:
+        except Exception:
             return
         self._show_copy_notice(mac)
 

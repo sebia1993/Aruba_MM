@@ -3238,6 +3238,26 @@ def test_mac_copy_ignores_malformed_click_event():
     assert app.scheduled_callbacks == []
 
 
+def test_mac_copy_ignores_unexpected_clipboard_failure():
+    app = make_headless_gui()
+    table = FakeTreeTable()
+    table.insert(
+        "",
+        "end",
+        iid="aa:bb:cc:00:00:01",
+        values=("aa:bb:cc:00:00:01", "삭제 대상", "2026-07-02 13:00:00", "", ""),
+    )
+    app.clipboard_append = lambda _value: (_ for _ in ()).throw(RuntimeError("clipboard failed"))
+
+    ArubaMmCleanupGui._copy_mac_from_table_event(app, FakeClickEvent(), table, "#1")
+
+    assert app.clipboard_values == []
+    assert app.copy_notice_title_var.get() == ""
+    assert app.copy_notice_mac_var.get() == ""
+    assert app.copy_notice_frame.hidden is True
+    assert app.scheduled_callbacks == []
+
+
 def test_show_copy_notice_ignores_destroyed_notice_variables():
     app = make_headless_gui()
     app.copy_notice_title_var = FailingSetVar("")
