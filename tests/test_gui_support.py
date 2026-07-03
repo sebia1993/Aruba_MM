@@ -599,6 +599,28 @@ def test_manual_run_unprintable_input_error_does_not_start_worker(monkeypatch):
     assert app.event_queue.empty()
 
 
+def test_manual_run_history_load_failure_still_starts_worker(monkeypatch):
+    class FakeThread:
+        def __init__(self, *_args, **_kwargs):
+            self.started = False
+
+        def start(self):
+            self.started = True
+
+    app = make_headless_gui()
+    app._read_inputs = lambda: (object(), object(), Path("outputs"))
+    app._load_history_from_output_dir = lambda *_args, **_kwargs: (_ for _ in ()).throw(
+        RuntimeError("history load failed")
+    )
+    monkeypatch.setattr(gui_app_module.threading, "Thread", FakeThread)
+
+    ArubaMmCleanupGui.start_manual_run(app)
+
+    assert app.is_running is True
+    assert app.worker.started is True
+    assert "WARNING: 이력 로드 실패 - history load failed" in app.logs
+
+
 def test_manual_run_thread_start_failure_resets_running_state(monkeypatch):
     class FailingThread:
         def __init__(self, *_args, **_kwargs):
@@ -673,6 +695,30 @@ def test_scheduler_unprintable_input_error_does_not_start_scheduler(monkeypatch)
     assert errors == [("입력 오류", "BadValueErrorText")]
     assert app.scheduler_running is False
     assert app.event_queue.empty()
+
+
+def test_scheduler_history_load_failure_still_starts_scheduler(monkeypatch):
+    class FakeThread:
+        def __init__(self, *_args, **_kwargs):
+            self.started = False
+
+        def start(self):
+            self.started = True
+
+    app = make_headless_gui()
+    app._read_inputs = lambda: (object(), object(), Path("outputs"))
+    app._read_interval = lambda: 5
+    app._load_history_from_output_dir = lambda *_args, **_kwargs: (_ for _ in ()).throw(
+        RuntimeError("history load failed")
+    )
+    monkeypatch.setattr(gui_app_module.threading, "Thread", FakeThread)
+
+    ArubaMmCleanupGui.start_scheduler(app)
+
+    assert app.scheduler_running is True
+    assert app.scheduler_worker.started is True
+    assert "WARNING: 이력 로드 실패 - history load failed" in app.logs
+    assert "주기 실행 시작: 5초 간격" in app.logs
 
 
 def test_scheduler_thread_start_failure_resets_scheduler_state(monkeypatch):

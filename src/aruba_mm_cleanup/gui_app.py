@@ -547,7 +547,11 @@ class ArubaMmCleanupGui(tk.Tk):
             except tk.TclError:
                 pass
             return
-        self._load_history_from_output_dir(output_dir)
+        try:
+            self._load_history_from_output_dir(output_dir)
+        except Exception as exc:
+            error = _safe_text(exc) or exc.__class__.__name__
+            self._log(f"WARNING: 이력 로드 실패 - {error}")
         self.cancel_event.clear()
         self._set_running(True)
         try:
@@ -578,7 +582,11 @@ class ArubaMmCleanupGui(tk.Tk):
             except tk.TclError:
                 pass
             return
-        self._load_history_from_output_dir(output_dir)
+        try:
+            self._load_history_from_output_dir(output_dir)
+        except Exception as exc:
+            error = _safe_text(exc) or exc.__class__.__name__
+            self._log(f"WARNING: 이력 로드 실패 - {error}")
         self.scheduler_stop_event.clear()
         self.scheduler_running = True
         try:
