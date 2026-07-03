@@ -1048,6 +1048,16 @@ def test_delete_canceled_button_failure_does_not_skip_log():
     assert "CANCELED: 2 pending MAC(s)" in app.logs
 
 
+def test_delete_canceled_unexpected_button_failure_does_not_skip_log():
+    app = make_headless_gui()
+    app.cancel_button = UnexpectedConfigureFailingButton()
+    app.table = FakeTreeTable()
+
+    ArubaMmCleanupGui._handle_progress(app, "delete_canceled", {"count": 2})
+
+    assert "CANCELED: 2 pending MAC(s)" in app.logs
+
+
 def test_countdown_progress_handles_invalid_remaining_payload():
     app = make_headless_gui()
 

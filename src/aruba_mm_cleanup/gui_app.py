@@ -1062,7 +1062,7 @@ class ArubaMmCleanupGui(tk.Tk):
             self._set_timer("-", "대기")
             try:
                 self.cancel_button.configure(state="disabled")
-            except tk.TclError:
+            except Exception:
                 pass
             self._set_all_pending_status("취소됨")
             self._log(f"CANCELED: {payload.get('count')} pending MAC(s)")
