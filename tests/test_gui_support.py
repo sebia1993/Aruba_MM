@@ -264,9 +264,24 @@ class InsertFailingLogText(FakeLogText):
         raise tk.TclError("invalid command name")
 
 
+class UnexpectedInsertFailingLogText(FakeLogText):
+    def insert(self, _index, _text):
+        raise RuntimeError("log insert failed")
+
+
+class UnexpectedSeeFailingLogText(FakeLogText):
+    def see(self, _index):
+        raise RuntimeError("log see failed")
+
+
 class ConfigureFailingLogText(FakeLogText):
     def configure(self, **_kwargs):
         raise tk.TclError("invalid command name")
+
+
+class UnexpectedConfigureFailingLogText(FakeLogText):
+    def configure(self, **_kwargs):
+        raise RuntimeError("log configure failed")
 
 
 class FakeOverlayFrame:
@@ -2670,9 +2685,38 @@ def test_log_restores_disabled_state_when_insert_fails():
     assert app.log_text.lines == []
 
 
+def test_log_restores_disabled_state_when_insert_unexpectedly_fails():
+    app = make_headless_gui()
+    app.log_text = UnexpectedInsertFailingLogText()
+
+    ArubaMmCleanupGui._log(app, "line cannot be inserted")
+
+    assert app.log_text.state == "disabled"
+    assert app.log_text.lines == []
+
+
+def test_log_restores_disabled_state_when_see_unexpectedly_fails():
+    app = make_headless_gui()
+    app.log_text = UnexpectedSeeFailingLogText()
+
+    ArubaMmCleanupGui._log(app, "line still recorded")
+
+    assert app.log_text.lines[-1].endswith("line still recorded")
+    assert app.log_text.state == "disabled"
+
+
 def test_log_ignores_destroyed_log_widget():
     app = make_headless_gui()
     app.log_text = ConfigureFailingLogText()
+
+    ArubaMmCleanupGui._log(app, "line cannot be written")
+
+    assert app.log_text.lines == []
+
+
+def test_log_ignores_unexpected_configure_failure():
+    app = make_headless_gui()
+    app.log_text = UnexpectedConfigureFailingLogText()
 
     ArubaMmCleanupGui._log(app, "line cannot be written")
 
@@ -2695,6 +2739,15 @@ def test_clear_log_restores_disabled_state_when_delete_unexpectedly_fails():
     ArubaMmCleanupGui.clear_log(app)
 
     assert app.log_text.state == "disabled"
+
+
+def test_clear_log_ignores_unexpected_disabled_restore_failure():
+    app = make_headless_gui()
+    app.log_text = UnexpectedConfigureFailingLogText()
+
+    ArubaMmCleanupGui.clear_log(app)
+
+    assert app.log_text.lines == []
 
 
 def test_append_history_rows_ignores_missing_delete_results():

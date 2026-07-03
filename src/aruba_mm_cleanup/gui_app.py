@@ -1408,12 +1408,12 @@ class ArubaMmCleanupGui(tk.Tk):
             self.log_text.insert("end", f"{time.strftime('%H:%M:%S')} {message}\n")
             self._cap_log_lines()
             self.log_text.see("end")
-        except tk.TclError:
+        except Exception:
             pass
         finally:
             try:
                 self.log_text.configure(state="disabled")
-            except tk.TclError:
+            except Exception:
                 pass
 
     def _cap_log_lines(self) -> None:
@@ -1436,7 +1436,7 @@ class ArubaMmCleanupGui(tk.Tk):
         except Exception:
             try:
                 self.log_text.configure(state="disabled")
-            except tk.TclError:
+            except Exception:
                 pass
 
     def clear_history(self) -> None:
