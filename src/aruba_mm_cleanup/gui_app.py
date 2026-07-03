@@ -1442,7 +1442,7 @@ class ArubaMmCleanupGui(tk.Tk):
     def clear_history(self) -> None:
         try:
             self.history_table.delete(*self.history_table.get_children())
-        except tk.TclError:
+        except Exception:
             return
         self.history_row_counter = 0
 
@@ -1468,7 +1468,7 @@ class ArubaMmCleanupGui(tk.Tk):
         records = self._read_history_records(output_dir)
         try:
             self.history_table.delete(*self.history_table.get_children())
-        except tk.TclError:
+        except Exception:
             return
         self.history_row_counter = 0
         for record in records[-MAX_HISTORY_ROWS:]:
