@@ -197,6 +197,18 @@ class UnexpectedInsertFailingTreeTable(FakeTreeTable):
         raise RuntimeError("table insert failed")
 
 
+class UnexpectedChildrenFailingTreeTable(FakeTreeTable):
+    def get_children(self):
+        raise RuntimeError("table children failed")
+
+
+class UnexpectedUpdateFailingTreeTable(FakeTreeTable):
+    def item(self, item, option=None, **kwargs):
+        if kwargs:
+            raise RuntimeError("table update failed")
+        return super().item(item, option, **kwargs)
+
+
 class IdentifyFailingTreeTable(FakeTreeTable):
     def identify_column(self, _x):
         raise tk.TclError("invalid command name")
@@ -1349,6 +1361,45 @@ def test_set_all_pending_status_skips_unhashable_status_values_and_updates_valid
 
     assert app.table.rows["bad-row"]["values"][1] == ["삭제 대상"]
     assert app.table.rows["aa:bb:cc:00:00:01"]["values"][1] == "취소됨"
+
+
+def test_set_all_pending_status_ignores_unexpected_children_failure():
+    app = make_headless_gui()
+    app.table = UnexpectedChildrenFailingTreeTable()
+
+    ArubaMmCleanupGui._set_all_pending_status(app, "취소됨")
+
+    assert app.table.rows == {}
+
+
+def test_set_all_pending_status_ignores_unexpected_item_read_failure():
+    app = make_headless_gui()
+    app.table = UnexpectedItemFailingTreeTable()
+    app.table.insert(
+        "",
+        "end",
+        iid="aa:bb:cc:00:00:01",
+        values=("aa:bb:cc:00:00:01", "삭제 대상", "2026-07-02 13:00:00", "", ""),
+    )
+
+    ArubaMmCleanupGui._set_all_pending_status(app, "취소됨")
+
+    assert app.table.rows["aa:bb:cc:00:00:01"]["values"][1] == "삭제 대상"
+
+
+def test_set_all_pending_status_ignores_unexpected_item_update_failure():
+    app = make_headless_gui()
+    app.table = UnexpectedUpdateFailingTreeTable()
+    app.table.insert(
+        "",
+        "end",
+        iid="aa:bb:cc:00:00:01",
+        values=("aa:bb:cc:00:00:01", "삭제 대상", "2026-07-02 13:00:00", "", ""),
+    )
+
+    ArubaMmCleanupGui._set_all_pending_status(app, "취소됨")
+
+    assert app.table.rows["aa:bb:cc:00:00:01"]["values"][1] == "삭제 대상"
 
 
 def test_result_table_updates_ignore_destroyed_table():

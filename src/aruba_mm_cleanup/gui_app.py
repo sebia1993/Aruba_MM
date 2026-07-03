@@ -1221,15 +1221,15 @@ class ArubaMmCleanupGui(tk.Tk):
     def _set_all_pending_status(self, status: str) -> None:
         try:
             item_ids = self.table.get_children()
-        except tk.TclError:
+        except Exception:
             return
         for item_id in item_ids:
             try:
                 values = list(self.table.item(item_id, "values"))
-            except tk.TclError:
-                return
             except TypeError:
                 continue
+            except Exception:
+                return
             if len(values) < 2:
                 continue
             try:
@@ -1240,7 +1240,7 @@ class ArubaMmCleanupGui(tk.Tk):
                 values[1] = status
                 try:
                     self.table.item(item_id, values=values)
-                except tk.TclError:
+                except Exception:
                     return
 
     def _set_running(self, running: bool) -> None:
