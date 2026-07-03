@@ -1299,13 +1299,13 @@ class ArubaMmCleanupGui(tk.Tk):
         if "cumulative_queried_count" not in self.__dict__:
             try:
                 queried_value = counter_vars["queried"].get()
-            except (KeyError, tk.TclError):
+            except Exception:
                 queried_value = 0
             self.cumulative_queried_count = _safe_int(queried_value)
         if "cumulative_deleted_count" not in self.__dict__:
             try:
                 deleted_value = counter_vars["deleted"].get()
-            except (KeyError, tk.TclError):
+            except Exception:
                 deleted_value = 0
             self.cumulative_deleted_count = _safe_int(deleted_value)
         if "current_run_queried_count" not in self.__dict__:

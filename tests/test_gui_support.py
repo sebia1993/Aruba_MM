@@ -47,6 +47,11 @@ class FailingGetVar(FakeVar):
         raise tk.TclError("invalid command name")
 
 
+class UnexpectedGetFailingVar(FakeVar):
+    def get(self):
+        raise RuntimeError("var get failed")
+
+
 class FailingSetVar(FakeVar):
     def set(self, _value):
         raise tk.TclError("invalid command name")
@@ -1603,6 +1608,24 @@ def test_ensure_cumulative_counters_handles_destroyed_counter_reads():
     app.counter_vars = {
         "queried": FailingGetVar("7"),
         "deleted": FailingGetVar("3"),
+    }
+
+    ArubaMmCleanupGui._ensure_cumulative_counters(app)
+
+    assert app.cumulative_queried_count == 0
+    assert app.cumulative_deleted_count == 0
+    assert app.current_run_queried_count == 0
+    assert app.current_run_query_counted is False
+    assert app.current_run_delete_counted is False
+
+
+def test_ensure_cumulative_counters_handles_unexpected_counter_reads():
+    app = make_headless_gui()
+    del app.cumulative_queried_count
+    del app.cumulative_deleted_count
+    app.counter_vars = {
+        "queried": UnexpectedGetFailingVar("7"),
+        "deleted": UnexpectedGetFailingVar("3"),
     }
 
     ArubaMmCleanupGui._ensure_cumulative_counters(app)
