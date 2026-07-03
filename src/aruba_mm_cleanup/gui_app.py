@@ -1426,7 +1426,11 @@ class ArubaMmCleanupGui(tk.Tk):
                 return default
 
         jsonl_path = output_dir / HISTORY_FILE_NAME
-        if jsonl_path.exists():
+        try:
+            has_jsonl_history = jsonl_path.exists()
+        except OSError:
+            has_jsonl_history = False
+        if has_jsonl_history:
             records: deque[dict[str, object]] = deque(maxlen=MAX_HISTORY_ROWS)
             try:
                 with jsonl_path.open(encoding="utf-8") as handle:

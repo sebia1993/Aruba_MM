@@ -1826,6 +1826,48 @@ def test_history_load_ignores_unreadable_jsonl_path(tmp_path):
     assert app.history_table.get_children() == ()
 
 
+def test_history_read_uses_audit_fallback_when_jsonl_exists_check_fails(tmp_path, monkeypatch):
+    output_dir = tmp_path / "outputs"
+    run_dir = output_dir / "20260702_130000_000000"
+    run_dir.mkdir(parents=True)
+    (run_dir / "cleanup_summary.json").write_text(
+        json.dumps(
+            {
+                "started_at": "2026-07-02T13:00:00",
+                "delete_results": [
+                    {
+                        "mac": "aa:bb:cc:00:00:01",
+                        "status": "verified_deleted",
+                        "success": True,
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    original_exists = Path.exists
+
+    def failing_history_exists(path):
+        if path.name == HISTORY_FILE_NAME:
+            raise OSError("history path unavailable")
+        return original_exists(path)
+
+    monkeypatch.setattr(Path, "exists", failing_history_exists)
+    app = make_headless_gui()
+
+    loaded = app._read_history_records(output_dir)
+
+    assert loaded == [
+        {
+            "mac": "aa:bb:cc:00:00:01",
+            "status": "verified_deleted",
+            "success": True,
+            "run_at": "2026-07-02T13:00:00",
+            "reappeared": False,
+        }
+    ]
+
+
 def test_history_load_ignores_invalid_encoding_jsonl(tmp_path):
     output_dir = tmp_path / "outputs"
     output_dir.mkdir()
