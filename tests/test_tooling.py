@@ -107,6 +107,42 @@ def test_release_zip_verifier_reports_gui_smoke_launch_failure(tmp_path, monkeyp
     assert "GUI smoke command could not start" in str(exc_info.value)
 
 
+def test_release_zip_verifier_reports_cli_smoke_extract_failure(tmp_path, monkeypatch):
+    zip_path = tmp_path / "release.zip"
+    with zipfile.ZipFile(zip_path, "w") as archive:
+        archive.writestr("ArubaMMCleanupCLI.exe", "sample")
+
+    monkeypatch.setattr("tools.verify_release_package.platform.system", lambda: "Windows")
+
+    def failing_extractall(self, _path):
+        raise OSError("extract denied")
+
+    monkeypatch.setattr(zipfile.ZipFile, "extractall", failing_extractall)
+
+    with pytest.raises(SystemExit) as exc_info:
+        _smoke_cli_help(zip_path, require=True)
+
+    assert "CLI smoke ZIP extraction failed" in str(exc_info.value)
+
+
+def test_release_zip_verifier_reports_gui_smoke_extract_failure(tmp_path, monkeypatch):
+    zip_path = tmp_path / "release.zip"
+    with zipfile.ZipFile(zip_path, "w") as archive:
+        archive.writestr("ArubaMMCleanupGUI.exe", "sample")
+
+    monkeypatch.setattr("tools.verify_release_package.platform.system", lambda: "Windows")
+
+    def failing_extractall(self, _path):
+        raise RuntimeError("encrypted zip")
+
+    monkeypatch.setattr(zipfile.ZipFile, "extractall", failing_extractall)
+
+    with pytest.raises(SystemExit) as exc_info:
+        _smoke_gui(zip_path, require=True)
+
+    assert "GUI smoke ZIP extraction failed" in str(exc_info.value)
+
+
 def test_cli_help_distinguishes_timeout_from_delete_delay():
     completed = subprocess.run(
         [sys.executable, "-m", "aruba_mm_cleanup.cli", "--help"],

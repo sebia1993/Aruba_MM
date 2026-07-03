@@ -98,8 +98,11 @@ def _smoke_cli_help(zip_path: Path, *, require: bool) -> None:
         return
     with tempfile.TemporaryDirectory(prefix="aruba_mm_cleanup_smoke_") as temp_dir:
         extract_dir = Path(temp_dir)
-        with zipfile.ZipFile(zip_path) as archive:
-            archive.extractall(extract_dir)
+        try:
+            with zipfile.ZipFile(zip_path) as archive:
+                archive.extractall(extract_dir)
+        except (zipfile.BadZipFile, OSError, RuntimeError) as exc:
+            raise SystemExit(f"CLI smoke ZIP extraction failed: {exc}") from exc
         cli_exe = extract_dir / "ArubaMMCleanupCLI.exe"
         try:
             completed = subprocess.run(
@@ -128,8 +131,11 @@ def _smoke_gui(zip_path: Path, *, require: bool) -> None:
         return
     with tempfile.TemporaryDirectory(prefix="aruba_mm_cleanup_gui_smoke_") as temp_dir:
         extract_dir = Path(temp_dir)
-        with zipfile.ZipFile(zip_path) as archive:
-            archive.extractall(extract_dir)
+        try:
+            with zipfile.ZipFile(zip_path) as archive:
+                archive.extractall(extract_dir)
+        except (zipfile.BadZipFile, OSError, RuntimeError) as exc:
+            raise SystemExit(f"GUI smoke ZIP extraction failed: {exc}") from exc
         gui_exe = extract_dir / "ArubaMMCleanupGUI.exe"
         env = os.environ.copy()
         env["ARUBA_MM_CLEANUP_GUI_SMOKE"] = "1"
