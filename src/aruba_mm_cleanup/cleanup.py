@@ -219,6 +219,7 @@ class MmCleanupRunner:
             if canceled_after_delete:
                 summary.canceled = True
                 summary.verification_skipped = True
+                summary.delete_results = _safe_list_items(summary.delete_results)
                 summary.delete_success_count = sum(1 for item in summary.delete_results if item.success)
                 summary.delete_failure_count = sum(1 for item in summary.delete_results if not item.success)
                 summary.remaining_count = max(summary.queried_count - summary.delete_success_count, 0)
@@ -234,6 +235,7 @@ class MmCleanupRunner:
             if canceled_before_verify:
                 summary.canceled = True
                 summary.verification_skipped = True
+                summary.delete_results = _safe_list_items(summary.delete_results)
                 summary.delete_success_count = sum(1 for item in summary.delete_results if item.success)
                 summary.delete_failure_count = sum(1 for item in summary.delete_results if not item.success)
                 summary.remaining_count = max(summary.queried_count - summary.delete_success_count, 0)
