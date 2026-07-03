@@ -886,15 +886,15 @@ class ArubaMmCleanupGui(tk.Tk):
                         self.scheduler_running = False
                         try:
                             self.manual_button.configure(state="disabled" if self.is_running else "normal")
-                        except tk.TclError:
+                        except Exception:
                             pass
                         try:
                             self.schedule_button.configure(state="disabled" if self.is_running else "normal")
-                        except tk.TclError:
+                        except Exception:
                             pass
                         try:
                             self.stop_schedule_button.configure(state="disabled")
-                        except tk.TclError:
+                        except Exception:
                             pass
                         self._set_timer("-", "대기")
                         self._sync_settings_visibility()

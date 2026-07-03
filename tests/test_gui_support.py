@@ -1751,6 +1751,20 @@ def test_scheduler_stopped_button_failure_still_updates_timer():
     assert app.timers[-1] == ("-", "대기")
 
 
+def test_scheduler_stopped_unexpected_button_failure_still_updates_timer():
+    app = make_headless_gui()
+    app.scheduler_running = True
+    app.manual_button = UnexpectedConfigureFailingButton()
+    app.schedule_button = UnexpectedConfigureFailingButton()
+    app.stop_schedule_button = UnexpectedConfigureFailingButton()
+    app.event_queue.put(("scheduler_stopped", None))
+
+    ArubaMmCleanupGui._drain_events(app)
+
+    assert app.scheduler_running is False
+    assert app.timers[-1] == ("-", "대기")
+
+
 def test_sync_settings_visibility_toggles_settings_frame():
     app = make_headless_gui()
     app.settings_frame = FakeSettingsFrame()
