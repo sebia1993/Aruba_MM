@@ -566,8 +566,17 @@ def _apply_verification(delete_results: list[DeleteResult], verify_macs: list[st
     remaining = set(_unique_macs(verify_macs))
     verified: list[DeleteResult] = []
     for item in delete_results:
-        absent = item.mac not in remaining
         response_status = item.response_status or item.status
+        try:
+            item_mac = item.mac if isinstance(item.mac, str) else ""
+            comparable_mac = normalize_mac(item_mac) or item_mac.strip().casefold()
+        except Exception:
+            comparable_mac = ""
+        if not comparable_mac:
+            error = item.error or "확인 필요: 삭제 결과 MAC 오류"
+            verified.append(replace(item, success=False, status="unknown", error=error, verified_absent=None))
+            continue
+        absent = comparable_mac not in remaining
         if response_status == "deleted" and absent:
             verified.append(replace(item, success=True, status="verified_deleted", verified_absent=True))
         elif response_status == "deleted":
