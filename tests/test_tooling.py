@@ -7,6 +7,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from aruba_mm_cleanup.cli import main as cli_main
+from tools.verify_release_package import _find_latest_zip
 
 
 def test_release_zip_verifier_checks_required_files(tmp_path):
@@ -32,6 +33,23 @@ def test_release_zip_verifier_checks_required_files(tmp_path):
     )
 
     assert completed.returncode == 0, completed.stdout + completed.stderr
+
+
+def test_release_zip_verifier_ignores_disappearing_zip_candidates(tmp_path, monkeypatch):
+    stale_zip = tmp_path / "stale.zip"
+    latest_zip = tmp_path / "latest.zip"
+    stale_zip.write_text("stale", encoding="utf-8")
+    latest_zip.write_text("latest", encoding="utf-8")
+    original_stat = Path.stat
+
+    def flaky_stat(path, *args, **kwargs):
+        if path == stale_zip:
+            raise FileNotFoundError(path)
+        return original_stat(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "stat", flaky_stat)
+
+    assert _find_latest_zip(tmp_path) == latest_zip
 
 
 def test_cli_help_distinguishes_timeout_from_delete_delay():

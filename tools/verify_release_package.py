@@ -59,10 +59,16 @@ def main(argv: Optional[list[str]] = None) -> int:
 
 
 def _find_latest_zip(dist_dir: Path) -> Path:
-    candidates = sorted(dist_dir.glob("*.zip"), key=lambda path: path.stat().st_mtime, reverse=True)
+    candidates: list[tuple[float, Path]] = []
+    for path in dist_dir.glob("*.zip"):
+        try:
+            mtime = path.stat().st_mtime
+        except OSError:
+            continue
+        candidates.append((mtime, path))
     if not candidates:
         raise SystemExit(f"No release ZIP was found in {dist_dir}")
-    return candidates[0]
+    return max(candidates, key=lambda item: item[0])[1]
 
 
 def _read_zip_names(zip_path: Path) -> set[str]:
