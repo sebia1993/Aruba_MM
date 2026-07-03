@@ -644,7 +644,7 @@ def _reappeared_deleted_macs(delete_results: list[DeleteResult], verify_macs: li
 def _apply_verification(delete_results: list[DeleteResult], verify_macs: list[str]) -> list[DeleteResult]:
     remaining = set(_unique_macs(verify_macs))
     verified: list[DeleteResult] = []
-    for item in delete_results:
+    for item in _safe_list_items(delete_results):
         response_status = _safe_text(item.response_status) or _safe_text(item.status)
         try:
             item_mac = item.mac if isinstance(item.mac, str) else ""
