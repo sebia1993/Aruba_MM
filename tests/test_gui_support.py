@@ -1038,6 +1038,17 @@ def test_run_error_progress_handles_unprintable_error_without_losing_log():
     assert "ERROR: BadErrorText" in app.logs
 
 
+def test_run_error_unexpected_button_failure_does_not_skip_log():
+    app = make_headless_gui()
+    app.cancel_button = UnexpectedConfigureFailingButton()
+
+    ArubaMmCleanupGui._handle_progress(app, "run_error", {"error": BadErrorText()})
+
+    assert app.status_var.get() == "실패"
+    assert app.timers[-1] == ("-", "대기")
+    assert "ERROR: BadErrorText" in app.logs
+
+
 def test_delete_canceled_button_failure_does_not_skip_log():
     app = make_headless_gui()
     app.cancel_button = FailingConfigureButton()

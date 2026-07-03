@@ -1074,7 +1074,7 @@ class ArubaMmCleanupGui(tk.Tk):
             self._set_timer("-", "대기")
             try:
                 self.cancel_button.configure(state="disabled")
-            except tk.TclError:
+            except Exception:
                 pass
             raw_error = payload.get("error")
             error = "None" if raw_error is None else (_safe_text(raw_error) or raw_error.__class__.__name__)
