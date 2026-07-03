@@ -1383,6 +1383,24 @@ def test_replace_table_ignores_unexpected_insert_failure():
     assert app.table.rows == {}
 
 
+def test_mark_reappeared_rows_ignores_unexpected_exists_failure():
+    app = make_headless_gui()
+    app.table = UnexpectedExistsFailingTreeTable()
+
+    ArubaMmCleanupGui._mark_reappeared_rows(app, ["aa:bb:cc:00:00:01"])
+
+    assert app.table.rows == {}
+
+
+def test_mark_reappeared_rows_ignores_unexpected_insert_failure():
+    app = make_headless_gui()
+    app.table = UnexpectedInsertFailingTreeTable()
+
+    ArubaMmCleanupGui._mark_reappeared_rows(app, ["aa:bb:cc:00:00:01"])
+
+    assert app.table.rows == {}
+
+
 def test_history_cap_ignores_destroyed_history_table():
     app = make_headless_gui()
     app.history_table = DestroyedHistoryTable()
