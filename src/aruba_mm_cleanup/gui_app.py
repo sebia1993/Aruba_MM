@@ -1437,7 +1437,7 @@ class ArubaMmCleanupGui(tk.Tk):
                     for line in handle:
                         try:
                             record = json.loads(line)
-                        except json.JSONDecodeError:
+                        except (json.JSONDecodeError, RecursionError):
                             continue
                         if isinstance(record, dict) and isinstance(record.get("mac"), str) and record.get("mac"):
                             records.append(record)
@@ -1452,7 +1452,7 @@ class ArubaMmCleanupGui(tk.Tk):
         for audit_path in audit_paths:
             try:
                 audit = json.loads(audit_path.read_text(encoding="utf-8"))
-            except (OSError, UnicodeError, json.JSONDecodeError):
+            except (OSError, UnicodeError, json.JSONDecodeError, RecursionError):
                 continue
             if not isinstance(audit, dict):
                 continue

@@ -1882,6 +1882,33 @@ def test_history_load_ignores_invalid_encoding_jsonl(tmp_path):
     assert app.history_table.get_children() == ()
 
 
+def test_history_read_skips_recursion_error_jsonl_record(tmp_path, monkeypatch):
+    output_dir = tmp_path / "outputs"
+    output_dir.mkdir()
+    (output_dir / HISTORY_FILE_NAME).write_text(
+        "\n".join(
+            [
+                "bad-recursive-json",
+                json.dumps({"run_at": "2026-07-02T13:00:00", "mac": "aa:bb:cc:00:00:01"}),
+            ]
+        ),
+        encoding="utf-8",
+    )
+    original_loads = json.loads
+
+    def fake_loads(payload):
+        if payload.strip() == "bad-recursive-json":
+            raise RecursionError("too deeply nested")
+        return original_loads(payload)
+
+    monkeypatch.setattr(gui_app_module.json, "loads", fake_loads)
+    app = make_headless_gui()
+
+    loaded = app._read_history_records(output_dir)
+
+    assert loaded == [{"run_at": "2026-07-02T13:00:00", "mac": "aa:bb:cc:00:00:01"}]
+
+
 def test_history_load_ignores_invalid_encoding_audit_fallback(tmp_path):
     output_dir = tmp_path / "outputs"
     run_dir = output_dir / "20260702_130000_000000"
@@ -1895,6 +1922,51 @@ def test_history_load_ignores_invalid_encoding_audit_fallback(tmp_path):
     app._load_history_from_output_dir(output_dir)
 
     assert app.history_table.get_children() == ()
+
+
+def test_history_read_skips_recursion_error_audit_fallback(tmp_path, monkeypatch):
+    output_dir = tmp_path / "outputs"
+    bad_run_dir = output_dir / "20260702_125900_000000"
+    good_run_dir = output_dir / "20260702_130000_000000"
+    bad_run_dir.mkdir(parents=True)
+    good_run_dir.mkdir(parents=True)
+    (bad_run_dir / "cleanup_summary.json").write_text("bad-recursive-audit", encoding="utf-8")
+    (good_run_dir / "cleanup_summary.json").write_text(
+        json.dumps(
+            {
+                "started_at": "2026-07-02T13:00:00",
+                "delete_results": [
+                    {
+                        "mac": "aa:bb:cc:00:00:01",
+                        "status": "verified_deleted",
+                        "success": True,
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    original_loads = json.loads
+
+    def fake_loads(payload):
+        if payload == "bad-recursive-audit":
+            raise RecursionError("too deeply nested")
+        return original_loads(payload)
+
+    monkeypatch.setattr(gui_app_module.json, "loads", fake_loads)
+    app = make_headless_gui()
+
+    loaded = app._read_history_records(output_dir)
+
+    assert loaded == [
+        {
+            "mac": "aa:bb:cc:00:00:01",
+            "status": "verified_deleted",
+            "success": True,
+            "run_at": "2026-07-02T13:00:00",
+            "reappeared": False,
+        }
+    ]
 
 
 def test_history_load_ignores_non_object_audit_fallback(tmp_path):
