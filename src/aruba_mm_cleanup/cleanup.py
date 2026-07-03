@@ -670,23 +670,64 @@ def _apply_verification(delete_results: list[DeleteResult], verify_macs: list[st
         response_status = _safe_text(_safe_attr(item, "response_status", "")) or _safe_text(
             _safe_attr(item, "status", "")
         )
+        command = _safe_text(_safe_attr(item, "command", ""))
+        error = _safe_text(_safe_attr(item, "error", ""))
         try:
             item_mac = item.mac if isinstance(item.mac, str) else ""
             comparable_mac = normalize_mac(item_mac) or item_mac.strip().casefold()
         except Exception:
             comparable_mac = ""
+            item_mac = _safe_text(_safe_attr(item, "mac", ""))
         if not comparable_mac:
-            error = _safe_text(_safe_attr(item, "error", "")) or "확인 필요: 삭제 결과 MAC 오류"
-            verified.append(replace(item, success=False, status="unknown", error=error, verified_absent=None))
+            verified.append(
+                DeleteResult(
+                    mac=_safe_text(item_mac),
+                    success=False,
+                    command=command,
+                    error=error or "확인 필요: 삭제 결과 MAC 오류",
+                    status="unknown",
+                    response_status=response_status or "unknown",
+                    verified_absent=None,
+                )
+            )
             continue
         absent = comparable_mac not in remaining
         if response_status == "deleted" and absent:
-            verified.append(replace(item, success=True, status="verified_deleted", verified_absent=True))
+            verified.append(
+                DeleteResult(
+                    mac=item_mac,
+                    success=True,
+                    command=command,
+                    error=error,
+                    status="verified_deleted",
+                    response_status=response_status,
+                    verified_absent=True,
+                )
+            )
         elif response_status == "deleted":
-            error = _safe_text(_safe_attr(item, "error", "")) or "삭제 응답은 성공이었지만 검증 조회에서 다시 발견"
-            verified.append(replace(item, success=False, status="reappeared", error=error, verified_absent=False))
+            verified.append(
+                DeleteResult(
+                    mac=item_mac,
+                    success=False,
+                    command=command,
+                    error=error or "삭제 응답은 성공이었지만 검증 조회에서 다시 발견",
+                    status="reappeared",
+                    response_status=response_status,
+                    verified_absent=False,
+                )
+            )
         else:
-            verified.append(replace(item, success=False, status=response_status or "unknown", verified_absent=absent))
+            verified.append(
+                DeleteResult(
+                    mac=item_mac,
+                    success=False,
+                    command=command,
+                    error=error,
+                    status=response_status or "unknown",
+                    response_status=response_status,
+                    verified_absent=absent,
+                )
+            )
     return verified
 
 

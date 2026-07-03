@@ -838,6 +838,30 @@ def test_run_once_verification_handles_unprintable_delete_result_status(tmp_path
     assert summary.delete_results[0].verified_absent is True
 
 
+def test_apply_verification_tolerates_unreadable_delete_result_command():
+    class FailingCommandResult(DeleteResult):
+        def __getattribute__(self, name):
+            if name == "command":
+                raise RuntimeError("bad command")
+            return super().__getattribute__(name)
+
+    result = FailingCommandResult(
+        mac="aa:bb:cc:00:00:01",
+        success=True,
+        command="cmd",
+        status="deleted",
+        response_status="deleted",
+    )
+
+    verified = cleanup_module._apply_verification([result], [])
+
+    assert verified[0].mac == "aa:bb:cc:00:00:01"
+    assert verified[0].command == ""
+    assert verified[0].success is True
+    assert verified[0].status == "verified_deleted"
+    assert verified[0].verified_absent is True
+
+
 def test_run_once_verification_tolerates_unreadable_delete_results(tmp_path):
     class UnreadableDeleteResults(list):
         def __iter__(self):
