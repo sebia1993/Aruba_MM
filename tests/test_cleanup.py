@@ -14,7 +14,15 @@ from aruba_mm_cleanup.cleanup import (
     write_audit_summary,
 )
 from aruba_mm_cleanup.connection import connect_to_mm
-from aruba_mm_cleanup.models import CleanupRunSummary, CleanupSettings, DeleteResult, MmConnectionConfig, ParseDecision
+from aruba_mm_cleanup.models import (
+    CleanupRunSummary,
+    CleanupSettings,
+    DeleteResult,
+    MmConnectionConfig,
+    ParseDecision,
+    QueryResult,
+    UserEntry,
+)
 from aruba_mm_cleanup.session import MmSession
 
 
@@ -85,6 +93,30 @@ class FailingCommandAttributeConnection:
 
     def disconnect(self):
         self.disconnected = True
+
+
+def test_query_result_macs_tolerates_unreadable_entries():
+    class UnreadableEntries(list):
+        def __iter__(self):
+            raise RuntimeError("bad entries")
+
+    query = QueryResult(command="show", entries=UnreadableEntries([UserEntry(mac="aa:bb:cc:00:00:01")]))
+
+    assert query.macs == []
+
+
+def test_query_result_macs_skips_entries_with_failing_mac_access():
+    class FailingMacEntry:
+        @property
+        def mac(self):
+            raise RuntimeError("bad mac")
+
+    query = QueryResult(
+        command="show",
+        entries=[FailingMacEntry(), UserEntry(mac="aa:bb:cc:00:00:02")],  # type: ignore[list-item]
+    )
+
+    assert query.macs == ["aa:bb:cc:00:00:02"]
 
 
 def test_build_commands_use_role_and_mac():

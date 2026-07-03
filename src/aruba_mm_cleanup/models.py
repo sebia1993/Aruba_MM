@@ -61,7 +61,23 @@ class QueryResult:
 
     @property
     def macs(self) -> list[str]:
-        return [entry.mac for entry in self.entries]
+        macs: list[str] = []
+        try:
+            entries_iter = iter(self.entries)
+        except Exception:
+            return macs
+        while True:
+            try:
+                entry = next(entries_iter)
+            except StopIteration:
+                break
+            except Exception:
+                break
+            try:
+                macs.append(entry.mac)
+            except Exception:
+                continue
+        return macs
 
 
 @dataclass(frozen=True)
