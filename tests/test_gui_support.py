@@ -1271,6 +1271,17 @@ def test_enqueue_event_drops_worker_events_after_closing():
     assert app.event_queue.empty()
 
 
+def test_enqueue_event_returns_false_when_queue_put_fails():
+    class PutFailingQueue:
+        def put(self, _item):
+            raise RuntimeError("queue put failed")
+
+    app = make_headless_gui()
+    app.event_queue = PutFailingQueue()
+
+    assert ArubaMmCleanupGui._enqueue_event(app, "running", True) is False
+
+
 def test_drain_events_logs_bad_event_and_continues():
     app = make_headless_gui()
     app.event_queue.put(("progress", ("countdown", {"remaining": "bad"})))

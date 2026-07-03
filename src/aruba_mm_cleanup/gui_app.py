@@ -773,7 +773,10 @@ class ArubaMmCleanupGui(tk.Tk):
     def _enqueue_event(self, event: str, payload: object) -> bool:
         if self.closing:
             return False
-        self.event_queue.put((event, payload))
+        try:
+            self.event_queue.put((event, payload))
+        except Exception:
+            return False
         return True
 
     def _read_inputs(self) -> tuple[MmConnectionConfig, CleanupSettings, Path]:
