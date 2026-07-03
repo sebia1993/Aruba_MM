@@ -52,6 +52,11 @@ class FailingSetVar(FakeVar):
         raise tk.TclError("invalid command name")
 
 
+class UnexpectedSetFailingVar(FakeVar):
+    def set(self, _value):
+        raise RuntimeError("var set failed")
+
+
 class BadErrorText(Exception):
     def __str__(self):
         raise RuntimeError("bad error text")
@@ -1550,11 +1555,37 @@ def test_set_timer_ignores_destroyed_timer_variables():
     assert app.timer_state_var.value == "0"
 
 
+def test_set_timer_ignores_unexpected_timer_variable_failure():
+    app = make_headless_gui()
+    app.timer_value_var = UnexpectedSetFailingVar()
+    app.timer_state_var = UnexpectedSetFailingVar()
+
+    ArubaMmCleanupGui._set_timer(app, "실행 중", "조회/삭제 처리")
+
+    assert app.timer_value_var.value == "0"
+    assert app.timer_state_var.value == "0"
+
+
 def test_sync_counter_vars_ignores_destroyed_counter_variables():
     app = make_headless_gui()
     app.counter_vars = {
         "queried": FailingSetVar("7"),
         "deleted": FailingSetVar("3"),
+    }
+    app.cumulative_queried_count = 9
+    app.cumulative_deleted_count = 5
+
+    ArubaMmCleanupGui._sync_counter_vars(app)
+
+    assert app.counter_vars["queried"].value == "7"
+    assert app.counter_vars["deleted"].value == "3"
+
+
+def test_sync_counter_vars_ignores_unexpected_counter_variable_failure():
+    app = make_headless_gui()
+    app.counter_vars = {
+        "queried": UnexpectedSetFailingVar("7"),
+        "deleted": UnexpectedSetFailingVar("3"),
     }
     app.cumulative_queried_count = 9
     app.cumulative_deleted_count = 5

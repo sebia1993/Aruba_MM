@@ -1268,7 +1268,7 @@ class ArubaMmCleanupGui(tk.Tk):
         try:
             self.timer_value_var.set(value)
             self.timer_state_var.set(state)
-        except tk.TclError:
+        except Exception:
             return
 
     def _reset_run_counters(self) -> None:
@@ -1291,7 +1291,7 @@ class ArubaMmCleanupGui(tk.Tk):
         try:
             self.counter_vars["queried"].set(str(self.cumulative_queried_count))
             self.counter_vars["deleted"].set(str(self.cumulative_deleted_count))
-        except tk.TclError:
+        except Exception:
             return
 
     def _ensure_cumulative_counters(self) -> None:
