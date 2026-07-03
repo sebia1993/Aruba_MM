@@ -493,18 +493,20 @@ def append_history_records(summary: CleanupRunSummary, *, output_dir: Path, host
     for item in delete_results:
         if not isinstance(item, DeleteResult):
             continue
+        success = _delete_result_success(item)
+        status = _safe_text(_safe_attr(item, "status", ""))
         record = {
             "run_at": run_at,
             "host": host_text,
             "role": role,
             "mac": item.mac,
             "result": _history_result_label(item),
-            "success": item.success,
-            "status": item.status or ("deleted" if item.success else "failed"),
+            "success": success,
+            "status": status or ("deleted" if success else "failed"),
             "response_status": item.response_status,
             "verified_absent": item.verified_absent,
             "error": item.error,
-            "reappeared": item.status == "reappeared",
+            "reappeared": status == "reappeared",
         }
         lines.append(json.dumps(record, ensure_ascii=False) + "\n")
     if not lines:
@@ -707,11 +709,12 @@ def _count_delete_results(results: list[object]) -> tuple[int, int]:
 
 
 def _history_result_label(item: DeleteResult) -> str:
-    if item.status == "reappeared":
+    status = _safe_text(_safe_attr(item, "status", ""))
+    if status == "reappeared":
         return "재조회됨"
-    if item.status == "unknown":
+    if status == "unknown":
         return "확인 필요"
-    if item.success:
+    if _delete_result_success(item):
         return "삭제 완료"
     return "삭제 실패"
 
