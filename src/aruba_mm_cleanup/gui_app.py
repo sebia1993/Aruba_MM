@@ -1604,7 +1604,7 @@ class ArubaMmCleanupGui(tk.Tk):
         row_id = f"history-{self.history_row_counter}"
         try:
             self.history_table.insert("", "end", iid=row_id, values=(run_at, mac, result, error), tags=tags)
-        except tk.TclError:
+        except Exception:
             return
         self.history_row_counter += 1
 
