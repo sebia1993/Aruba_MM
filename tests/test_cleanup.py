@@ -1304,6 +1304,30 @@ def test_delete_macs_tolerates_invalid_mac_container():
     assert ("delete_batch_start", {"count": 0}) in events
 
 
+def test_delete_macs_tolerates_unreadable_mac_container():
+    class UnreadableMacs(list):
+        def __iter__(self):
+            raise RuntimeError("bad mac iterator")
+
+    connection = FakeConnection(responses={"no paging": ""})
+    events = []
+    runner = MmCleanupRunner(
+        connection_factory=lambda _config, _timeout: connection,
+        sleep_func=lambda _seconds: None,
+    )
+
+    results = runner._delete_macs(
+        MmConnectionConfig(host="192.0.2.10", username="admin", password="secret"),
+        CleanupSettings(role="profiling", timeout=5, delete_delay_seconds=0),
+        UnreadableMacs(["aa:bb:cc:00:00:01"]),  # type: ignore[arg-type]
+        lambda event, payload: events.append((event, payload)),
+    )
+
+    assert results == []
+    assert connection.commands == []
+    assert ("delete_batch_start", {"count": 0}) in events
+
+
 def test_delete_macs_records_invalid_mac_without_sending_command():
     connection = FakeConnection(responses={"no paging": ""})
     events = []

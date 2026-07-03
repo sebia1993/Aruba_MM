@@ -612,9 +612,19 @@ def _has_control_character(value: str) -> bool:
 def _unique_macs(macs: list[str]) -> list[str]:
     if not isinstance(macs, (list, tuple, set)):
         return []
+    try:
+        macs_iter = iter(macs)
+    except Exception:
+        return []
     seen: set[str] = set()
     unique: list[str] = []
-    for mac in macs:
+    while True:
+        try:
+            mac = next(macs_iter)
+        except StopIteration:
+            break
+        except Exception:
+            break
         try:
             text = mac.strip() if isinstance(mac, str) else ""
             normalized = normalize_mac(text) or text.casefold()
