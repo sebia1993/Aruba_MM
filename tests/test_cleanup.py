@@ -1741,6 +1741,48 @@ def test_history_append_tolerates_invalid_delete_result_container(tmp_path):
     assert history_path.read_text(encoding="utf-8") == original_content
 
 
+def test_history_append_tolerates_failing_delete_results_access(tmp_path):
+    class FailingDeleteResultsSummary:
+        @property
+        def delete_results(self):
+            raise RuntimeError("bad delete results")
+
+    history_path = tmp_path / HISTORY_FILE_NAME
+    original_content = json.dumps({"run_at": "existing", "mac": "aa:bb:cc:00:00:ff"}) + "\n"
+    history_path.write_text(original_content, encoding="utf-8")
+
+    path = append_history_records(
+        FailingDeleteResultsSummary(),
+        output_dir=tmp_path,
+        host="192.0.2.10",
+    )  # type: ignore[arg-type]
+
+    assert path is None
+    assert history_path.read_text(encoding="utf-8") == original_content
+
+
+def test_history_append_tolerates_failing_started_at_access(tmp_path):
+    class FailingStartedAtSummary:
+        role = "profiling"
+        delete_results = [
+            DeleteResult(mac="aa:bb:cc:00:00:01", success=True, command="cmd"),
+        ]
+
+        @property
+        def started_at(self):
+            raise RuntimeError("bad started_at")
+
+    path = append_history_records(
+        FailingStartedAtSummary(),
+        output_dir=tmp_path,
+        host="192.0.2.10",
+    )  # type: ignore[arg-type]
+
+    history = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+    assert history[-1]["run_at"] == ""
+    assert history[-1]["mac"] == "aa:bb:cc:00:00:01"
+
+
 def test_history_append_skips_invalid_delete_result_items(tmp_path):
     history_path = tmp_path / HISTORY_FILE_NAME
     original_record = {"run_at": "existing", "mac": "aa:bb:cc:00:00:ff"}

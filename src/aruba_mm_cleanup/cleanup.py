@@ -461,12 +461,20 @@ def write_audit_summary(summary: CleanupRunSummary, *, output_dir: Path, host: s
 
 
 def append_history_records(summary: CleanupRunSummary, *, output_dir: Path, host: str) -> Optional[Path]:
-    delete_results = _safe_list_items(getattr(summary, "delete_results", None))
+    try:
+        raw_delete_results = getattr(summary, "delete_results", None)
+    except Exception:
+        raw_delete_results = None
+    delete_results = _safe_list_items(raw_delete_results)
     if not delete_results:
         return None
     output_dir.mkdir(parents=True, exist_ok=True)
     path = output_dir / HISTORY_FILE_NAME
-    run_at = _safe_timestamp_text(getattr(summary, "started_at", None))
+    try:
+        started_at = getattr(summary, "started_at", None)
+    except Exception:
+        started_at = None
+    run_at = _safe_timestamp_text(started_at)
     try:
         role = _safe_text(summary.role)
     except Exception:
