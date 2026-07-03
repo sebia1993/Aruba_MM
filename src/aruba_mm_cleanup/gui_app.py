@@ -101,7 +101,11 @@ class ArubaMmCleanupGui(tk.Tk):
 
         self._build_styles()
         self._build_layout()
-        self._load_history_from_output_dir(DEFAULT_OUTPUT_DIR)
+        try:
+            self._load_history_from_output_dir(DEFAULT_OUTPUT_DIR)
+        except Exception as exc:
+            error = _safe_text(exc) or exc.__class__.__name__
+            self._log(f"WARNING: 이력 로드 실패 - {error}")
         self.protocol("WM_DELETE_WINDOW", self.on_close)
         self._drain_after_id = self.after(150, self._drain_events)
 

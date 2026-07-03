@@ -349,6 +349,32 @@ def test_version_and_gui_constants():
     assert MIN_INTERVAL_SECONDS == 1
 
 
+def test_initial_history_load_failure_does_not_abort_gui_init(monkeypatch):
+    logs = []
+
+    monkeypatch.setattr(gui_app_module.tk.Tk, "__init__", lambda self: None)
+    monkeypatch.setattr(gui_app_module.tk, "StringVar", FakeVar)
+    monkeypatch.setattr(ArubaMmCleanupGui, "title", lambda self, _title: None)
+    monkeypatch.setattr(ArubaMmCleanupGui, "geometry", lambda self, _geometry: None)
+    monkeypatch.setattr(ArubaMmCleanupGui, "minsize", lambda self, _width, _height: None)
+    monkeypatch.setattr(ArubaMmCleanupGui, "configure", lambda self, **_kwargs: None)
+    monkeypatch.setattr(ArubaMmCleanupGui, "_build_styles", lambda self: None)
+    monkeypatch.setattr(ArubaMmCleanupGui, "_build_layout", lambda self: None)
+    monkeypatch.setattr(
+        ArubaMmCleanupGui,
+        "_load_history_from_output_dir",
+        lambda self, *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("history load failed")),
+    )
+    monkeypatch.setattr(ArubaMmCleanupGui, "_log", lambda self, message: logs.append(message))
+    monkeypatch.setattr(ArubaMmCleanupGui, "protocol", lambda self, _name, _callback: None)
+    monkeypatch.setattr(ArubaMmCleanupGui, "after", lambda self, _ms, _callback: "after-1")
+
+    app = ArubaMmCleanupGui()
+
+    assert app._drain_after_id == "after-1"
+    assert logs == ["WARNING: 이력 로드 실패 - history load failed"]
+
+
 def test_read_inputs_uses_immediate_delete_and_device_timeout():
     app = make_input_gui()
 
