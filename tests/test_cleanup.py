@@ -1587,6 +1587,34 @@ def test_audit_summary_tolerates_invalid_list_containers(tmp_path):
     assert audit["delete_results"] == []
 
 
+def test_audit_summary_tolerates_unreadable_list_containers(tmp_path):
+    class UnreadableList(list):
+        def __iter__(self):
+            raise RuntimeError("bad list iterator")
+
+    summary = CleanupRunSummary(started_at=datetime(2026, 7, 2, 13, 0, 0), role="profiling")
+    summary.target_macs = UnreadableList(["aa:bb:cc:00:00:01"])  # type: ignore[assignment]
+    summary.reappeared_macs = UnreadableList(["aa:bb:cc:00:00:02"])  # type: ignore[assignment]
+    summary.query_parse_decisions = UnreadableList(
+        [ParseDecision(line_number=1, action="selected", reason="matched", mac="aa:bb:cc:00:00:01")]
+    )  # type: ignore[assignment]
+    summary.verify_parse_decisions = UnreadableList(
+        [ParseDecision(line_number=1, action="selected", reason="matched", mac="aa:bb:cc:00:00:02")]
+    )  # type: ignore[assignment]
+    summary.delete_results = UnreadableList(
+        [DeleteResult(mac="aa:bb:cc:00:00:01", success=True, command="cmd")]
+    )  # type: ignore[assignment]
+
+    path = write_audit_summary(summary, output_dir=tmp_path, host="192.0.2.10")
+
+    audit = json.loads(path.read_text(encoding="utf-8"))
+    assert audit["target_macs"] == []
+    assert audit["reappeared_macs"] == []
+    assert audit["query_parse_decisions"] == []
+    assert audit["verify_parse_decisions"] == []
+    assert audit["delete_results"] == []
+
+
 def test_history_append_tolerates_invalid_delete_result_container(tmp_path):
     history_path = tmp_path / HISTORY_FILE_NAME
     original_content = json.dumps({"run_at": "existing", "mac": "aa:bb:cc:00:00:ff"}) + "\n"

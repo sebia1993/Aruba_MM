@@ -163,7 +163,10 @@ def _item_value(item: Any, name: str, default: Any) -> Any:
 
 def _safe_list_items(value: Any) -> list[Any]:
     if isinstance(value, (list, tuple, set)):
-        return list(value)
+        try:
+            return list(value)
+        except Exception:
+            return []
     return []
 
 
