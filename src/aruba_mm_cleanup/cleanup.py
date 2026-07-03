@@ -506,7 +506,7 @@ def append_history_records(summary: CleanupRunSummary, *, output_dir: Path, host
             "status": status or ("deleted" if success else "failed"),
             "response_status": _safe_text(_safe_attr(item, "response_status", "")),
             "verified_absent": _safe_optional_bool(_safe_attr(item, "verified_absent", None)),
-            "error": item.error,
+            "error": _safe_attr(item, "error", ""),
             "reappeared": status == "reappeared",
         }
         lines.append(json.dumps(record, ensure_ascii=False) + "\n")
