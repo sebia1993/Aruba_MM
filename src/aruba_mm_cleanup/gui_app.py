@@ -1392,6 +1392,12 @@ class ArubaMmCleanupGui(tk.Tk):
             except Exception:
                 return ""
 
+        def safe_get(mapping: dict[str, object], key: str, default: object) -> object:
+            try:
+                return mapping.get(key, default)
+            except Exception:
+                return default
+
         output_dir = output_dir.expanduser()
         if not force and self.loaded_history_dir == output_dir:
             return
@@ -1405,8 +1411,8 @@ class ArubaMmCleanupGui(tk.Tk):
             return
         self.history_row_counter = 0
         for record in records[-MAX_HISTORY_ROWS:]:
-            run_at = safe_text(record.get("run_at", ""))[:19].replace("T", " ")
-            mac = safe_text(record.get("mac", ""))
+            run_at = safe_text(safe_get(record, "run_at", ""))[:19].replace("T", " ")
+            mac = safe_text(safe_get(record, "mac", ""))
             if not mac:
                 continue
             result, error, tags = self._history_row_display(record)
@@ -1492,17 +1498,23 @@ class ArubaMmCleanupGui(tk.Tk):
             except Exception:
                 return False
 
-        status = safe_text(record.get("status"))
-        result = safe_text(record.get("result"))
-        error = safe_text(record.get("error"))
-        reappeared = safe_bool(record.get("reappeared")) or status == "reappeared"
+        def safe_get(key: str, default: object = "") -> object:
+            try:
+                return record.get(key, default)
+            except Exception:
+                return default
+
+        status = safe_text(safe_get("status"))
+        result = safe_text(safe_get("result"))
+        error = safe_text(safe_get("error"))
+        reappeared = safe_bool(safe_get("reappeared", False)) or status == "reappeared"
         if reappeared:
             return "재조회됨", error or "삭제 성공 후 검증 조회에서 다시 발견", ("reappeared",)
         if result:
             return result, error, ()
         if status == "unknown":
             return "확인 필요", error, ()
-        if safe_bool(record.get("success")):
+        if safe_bool(safe_get("success", False)):
             return "삭제 완료", error, ()
         return "삭제 실패", error, ()
 

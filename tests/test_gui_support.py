@@ -1942,6 +1942,32 @@ def test_history_read_skips_jsonl_record_when_mac_access_fails(tmp_path, monkeyp
     assert loaded == [{"run_at": "2026-07-02T13:00:00", "mac": "aa:bb:cc:00:00:01"}]
 
 
+def test_history_load_handles_jsonl_record_when_optional_access_fails(tmp_path, monkeypatch):
+    class FailingOptionalRecord(dict):
+        def get(self, key, default=None):
+            if key in {"run_at", "status", "result", "error", "success", "reappeared"}:
+                raise RuntimeError(f"bad {key}")
+            return super().get(key, default)
+
+    output_dir = tmp_path / "outputs"
+    output_dir.mkdir()
+    (output_dir / HISTORY_FILE_NAME).write_text("bad-optional-record", encoding="utf-8")
+    monkeypatch.setattr(
+        gui_app_module.json,
+        "loads",
+        lambda _payload: FailingOptionalRecord({"mac": "aa:bb:cc:00:00:01"}),
+    )
+    app = make_headless_gui()
+    app.history_table = FakeHistoryTable()
+    app.history_row_counter = 0
+    app.loaded_history_dir = None
+
+    app._load_history_from_output_dir(output_dir)
+
+    rows = [app.history_table.rows[item]["values"] for item in app.history_table.get_children()]
+    assert rows == [("", "aa:bb:cc:00:00:01", "삭제 실패", "")]
+
+
 def test_history_load_ignores_invalid_encoding_audit_fallback(tmp_path):
     output_dir = tmp_path / "outputs"
     run_dir = output_dir / "20260702_130000_000000"
