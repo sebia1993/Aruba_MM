@@ -198,6 +198,11 @@ class UnexpectedDeleteFailingHistoryTable(FakeHistoryTable):
         raise RuntimeError("history delete failed")
 
 
+class UnexpectedCapDeleteFailingHistoryTable(FakeHistoryTable):
+    def delete(self, *items):
+        raise RuntimeError("history cap delete failed")
+
+
 class InsertFailingHistoryTable(FakeHistoryTable):
     def insert(self, _parent, _index, iid, values, tags=()):
         raise tk.TclError("invalid command name")
@@ -1298,6 +1303,26 @@ def test_history_cap_ignores_destroyed_history_table():
     ArubaMmCleanupGui._cap_history_rows(app)
 
     assert app.history_table.rows == {}
+
+
+def test_history_cap_ignores_unexpected_children_failure():
+    app = make_headless_gui()
+    app.history_table = UnexpectedDeleteFailingHistoryTable()
+
+    ArubaMmCleanupGui._cap_history_rows(app)
+
+    assert app.history_table.rows == {}
+
+
+def test_history_cap_ignores_unexpected_delete_failure():
+    app = make_headless_gui()
+    app.history_table = UnexpectedCapDeleteFailingHistoryTable()
+    for index in range(MAX_HISTORY_ROWS + 1):
+        app.history_table.insert("", "end", iid=f"history-{index}", values=("", "", "", ""))
+
+    ArubaMmCleanupGui._cap_history_rows(app)
+
+    assert len(app.history_table.get_children()) == MAX_HISTORY_ROWS + 1
 
 
 def test_running_state_resets_current_run_counters():

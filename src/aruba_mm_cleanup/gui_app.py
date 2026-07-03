@@ -1393,13 +1393,13 @@ class ArubaMmCleanupGui(tk.Tk):
     def _cap_history_rows(self) -> None:
         try:
             children = self.history_table.get_children()
-        except tk.TclError:
+        except Exception:
             return
         overflow = len(children) - MAX_HISTORY_ROWS
         if overflow > 0:
             try:
                 self.history_table.delete(*children[:overflow])
-            except tk.TclError:
+            except Exception:
                 return
 
     def _log(self, message: str) -> None:
