@@ -1316,11 +1316,14 @@ class ArubaMmCleanupGui(tk.Tk):
         raw_reappeared_macs = safe_get(summary, "reappeared_macs", [])
         if raw_reappeared_macs is None:
             raw_reappeared_macs = []
-        reappeared_macs = (
-            set(_unique_display_macs([mac for mac in raw_reappeared_macs if isinstance(mac, str)]))
-            if isinstance(raw_reappeared_macs, (list, tuple, set))
-            else set()
-        )
+        reappeared_macs = set()
+        if isinstance(raw_reappeared_macs, (list, tuple, set)):
+            try:
+                reappeared_macs = set(
+                    _unique_display_macs([mac for mac in raw_reappeared_macs if isinstance(mac, str)])
+                )
+            except Exception:
+                reappeared_macs = set()
         try:
             delete_results_iter = iter(delete_results)
         except Exception:
