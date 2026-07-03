@@ -623,6 +623,26 @@ def test_manual_run_thread_start_failure_resets_running_state(monkeypatch):
     assert "WARNING: 작업 스레드 시작 실패 - thread start failed" in app.logs
 
 
+def test_manual_run_thread_create_failure_resets_running_state(monkeypatch):
+    def failing_thread(*_args, **_kwargs):
+        raise RuntimeError("thread create failed")
+
+    app = make_headless_gui()
+    app._read_inputs = lambda: (object(), object(), Path("outputs"))
+    app._load_history_from_output_dir = lambda *_args, **_kwargs: None
+    monkeypatch.setattr(gui_app_module.threading, "Thread", failing_thread)
+
+    ArubaMmCleanupGui.start_manual_run(app)
+
+    assert app.is_running is False
+    assert app.worker is None
+    assert app.manual_button.config["state"] == "normal"
+    assert app.schedule_button.config["state"] == "normal"
+    assert app.cancel_button.config["state"] == "disabled"
+    assert app.timers[-1] == ("-", "대기")
+    assert "WARNING: 작업 스레드 시작 실패 - thread create failed" in app.logs
+
+
 def test_scheduler_input_error_dialog_failure_does_not_start_scheduler(monkeypatch):
     app = make_headless_gui()
     app._read_inputs = lambda: (_ for _ in ()).throw(ValueError("bad input"))
@@ -679,6 +699,28 @@ def test_scheduler_thread_start_failure_resets_scheduler_state(monkeypatch):
     assert app.stop_schedule_button.config["state"] == "disabled"
     assert app.timers[-1] == ("-", "대기")
     assert "WARNING: 주기 실행 스레드 시작 실패 - thread start failed" in app.logs
+
+
+def test_scheduler_thread_create_failure_resets_scheduler_state(monkeypatch):
+    def failing_thread(*_args, **_kwargs):
+        raise RuntimeError("thread create failed")
+
+    app = make_headless_gui()
+    app._read_inputs = lambda: (object(), object(), Path("outputs"))
+    app._read_interval = lambda: 5
+    app._load_history_from_output_dir = lambda *_args, **_kwargs: None
+    monkeypatch.setattr(gui_app_module.threading, "Thread", failing_thread)
+
+    ArubaMmCleanupGui.start_scheduler(app)
+
+    assert app.scheduler_running is False
+    assert app.scheduler_worker is None
+    assert app.scheduler_stop_event.is_set()
+    assert app.manual_button.config["state"] == "normal"
+    assert app.schedule_button.config["state"] == "normal"
+    assert app.stop_schedule_button.config["state"] == "disabled"
+    assert app.timers[-1] == ("-", "대기")
+    assert "WARNING: 주기 실행 스레드 시작 실패 - thread create failed" in app.logs
 
 
 def test_delete_progress_events_update_rows_without_confirmed_delete_count():
@@ -1484,6 +1526,27 @@ def test_start_session_close_thread_start_failure_does_not_raise(monkeypatch):
         (
             "warning",
             {"message": "세션 종료 스레드 시작 실패 - thread start failed", "reason": "manual"},
+        ),
+    )
+    assert app.event_queue.empty()
+
+
+def test_start_session_close_thread_create_failure_does_not_raise(monkeypatch):
+    def failing_thread(*_args, **_kwargs):
+        raise RuntimeError("thread create failed")
+
+    app = make_headless_gui()
+    app.session_close_worker = None
+    monkeypatch.setattr(gui_app_module.threading, "Thread", failing_thread)
+
+    ArubaMmCleanupGui._start_session_close(app, reason="manual", enqueue_progress=True)
+
+    assert app.session_close_worker is None
+    assert app.event_queue.get_nowait() == (
+        "progress",
+        (
+            "warning",
+            {"message": "세션 종료 스레드 시작 실패 - thread create failed", "reason": "manual"},
         ),
     )
     assert app.event_queue.empty()

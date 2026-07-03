@@ -550,12 +550,12 @@ class ArubaMmCleanupGui(tk.Tk):
         self._load_history_from_output_dir(output_dir)
         self.cancel_event.clear()
         self._set_running(True)
-        self.worker = threading.Thread(
-            target=self._run_once_worker,
-            args=(config, settings, output_dir),
-            daemon=True,
-        )
         try:
+            self.worker = threading.Thread(
+                target=self._run_once_worker,
+                args=(config, settings, output_dir),
+                daemon=True,
+            )
             self.worker.start()
         except Exception as exc:
             self.worker = None
@@ -595,12 +595,12 @@ class ArubaMmCleanupGui(tk.Tk):
             pass
         self._sync_settings_visibility()
         self._log(f"주기 실행 시작: {interval}초 간격")
-        self.scheduler_worker = threading.Thread(
-            target=self._scheduler_loop,
-            args=(config, settings, output_dir, interval),
-            daemon=True,
-        )
         try:
+            self.scheduler_worker = threading.Thread(
+                target=self._scheduler_loop,
+                args=(config, settings, output_dir, interval),
+                daemon=True,
+            )
             self.scheduler_worker.start()
         except Exception as exc:
             self.scheduler_worker = None
@@ -751,12 +751,12 @@ class ArubaMmCleanupGui(tk.Tk):
     def _start_session_close(self, *, reason: str, enqueue_progress: bool) -> None:
         if self.session_close_worker is not None and self.session_close_worker.is_alive():
             return
-        self.session_close_worker = threading.Thread(
-            target=self._close_runner_session,
-            kwargs={"reason": reason, "enqueue_progress": enqueue_progress},
-            daemon=True,
-        )
         try:
+            self.session_close_worker = threading.Thread(
+                target=self._close_runner_session,
+                kwargs={"reason": reason, "enqueue_progress": enqueue_progress},
+                daemon=True,
+            )
             self.session_close_worker.start()
         except Exception as exc:
             self.session_close_worker = None
