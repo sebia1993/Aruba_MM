@@ -2832,6 +2832,33 @@ def test_summary_ignores_string_reappeared_macs_without_character_rows():
     assert app.reappeared_rows == []
 
 
+def test_summary_ignores_unreadable_reappeared_macs_without_stopping_summary():
+    class UnreadableReappearedMacs(list):
+        def __iter__(self):
+            raise RuntimeError("bad reappeared macs")
+
+    app = make_headless_gui()
+    summary = SimpleNamespace(
+        target_macs=[],
+        queried_count=0,
+        delete_success_count=0,
+        reappeared_count=1,
+        verification_skipped=False,
+        error="",
+        canceled=False,
+        reappeared_macs=UnreadableReappearedMacs(["aa:bb:cc:00:00:01"]),
+        audit_path=None,
+        audit_error="",
+        history_error="",
+    )
+
+    app._handle_summary(summary)
+
+    assert app.status_var.get() == "삭제 MAC 재조회됨"
+    assert app.reappeared_rows == []
+    assert app.history_summaries == [summary]
+
+
 def test_summary_skips_bad_reappeared_mac_text_without_stopping_highlight():
     class BadText:
         def __str__(self):

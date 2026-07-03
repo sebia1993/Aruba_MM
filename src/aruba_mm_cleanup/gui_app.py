@@ -1062,7 +1062,17 @@ class ArubaMmCleanupGui(tk.Tk):
             raw_reappeared_macs = []
         reappeared_macs = []
         if isinstance(raw_reappeared_macs, (list, tuple, set)):
-            for mac in raw_reappeared_macs:
+            try:
+                reappeared_macs_iter = iter(raw_reappeared_macs)
+            except Exception:
+                reappeared_macs_iter = iter(())
+            while True:
+                try:
+                    mac = next(reappeared_macs_iter)
+                except StopIteration:
+                    break
+                except Exception:
+                    break
                 try:
                     reappeared_macs.append(str(mac))
                 except Exception:
