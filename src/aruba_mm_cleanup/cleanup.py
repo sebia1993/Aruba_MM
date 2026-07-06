@@ -31,6 +31,7 @@ ProgressCallback = Callable[[str, dict[str, object]], None]
 CancelCheck = Callable[[], bool]
 SleepFunc = Callable[[float], None]
 HISTORY_FILE_NAME = "deletion_history.jsonl"
+_HISTORY_WRITE_LOCK = threading.Lock()
 
 
 def build_query_command(role: str) -> str:
@@ -529,24 +530,25 @@ def append_history_records(summary: CleanupRunSummary, *, output_dir: Path, host
         lines.append(json.dumps(record, ensure_ascii=False) + "\n")
     if not lines:
         return None
-    tmp_path = _history_tmp_path(path)
-    try:
-        with tmp_path.open("wb") as tmp_handle:
+    with _HISTORY_WRITE_LOCK:
+        tmp_path = _history_tmp_path(path)
+        try:
+            with tmp_path.open("wb") as tmp_handle:
+                try:
+                    with path.open("rb") as existing_handle:
+                        shutil.copyfileobj(existing_handle, tmp_handle)
+                except FileNotFoundError:
+                    pass
+                tmp_handle.write("".join(lines).encode("utf-8"))
+            tmp_path.replace(path)
+        except Exception:
             try:
-                with path.open("rb") as existing_handle:
-                    shutil.copyfileobj(existing_handle, tmp_handle)
+                tmp_path.unlink()
             except FileNotFoundError:
                 pass
-            tmp_handle.write("".join(lines).encode("utf-8"))
-        tmp_path.replace(path)
-    except Exception:
-        try:
-            tmp_path.unlink()
-        except FileNotFoundError:
-            pass
-        except OSError:
-            pass
-        raise
+            except OSError:
+                pass
+            raise
     return path
 
 

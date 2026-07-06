@@ -2626,3 +2626,71 @@ def test_history_append_does_not_overwrite_stale_shared_tmp_file(tmp_path):
     assert not list(tmp_path.glob(f"{history_path.name}.*.tmp"))
     history = [json.loads(line) for line in history_path.read_text(encoding="utf-8").splitlines()]
     assert [record["mac"] for record in history] == ["aa:bb:cc:00:00:ff", "aa:bb:cc:00:00:01"]
+
+
+def test_history_append_serializes_same_process_writers(tmp_path, monkeypatch):
+    history_path = tmp_path / HISTORY_FILE_NAME
+    history_path.write_text(json.dumps({"run_at": "existing", "mac": "aa:bb:cc:00:00:ff"}) + "\n", encoding="utf-8")
+    first_summary = CleanupRunSummary(started_at=datetime(2026, 7, 2, 13, 0, 0), role="profiling")
+    first_summary.delete_results = [
+        DeleteResult(mac="aa:bb:cc:00:00:01", success=True, command="cmd"),
+    ]
+    second_summary = CleanupRunSummary(started_at=datetime(2026, 7, 2, 13, 1, 0), role="profiling")
+    second_summary.delete_results = [
+        DeleteResult(mac="aa:bb:cc:00:00:02", success=True, command="cmd"),
+    ]
+    original_copyfileobj = cleanup_module.shutil.copyfileobj
+    copy_call_count = 0
+    copy_call_lock = threading.Lock()
+    first_copy_started = threading.Event()
+    second_thread_started = threading.Event()
+    second_copy_started = threading.Event()
+    release_first_copy = threading.Event()
+    errors = []
+
+    def blocking_copyfileobj(source, destination, *args, **kwargs):
+        nonlocal copy_call_count
+        with copy_call_lock:
+            copy_call_count += 1
+            call_number = copy_call_count
+        result = original_copyfileobj(source, destination, *args, **kwargs)
+        if call_number == 1:
+            first_copy_started.set()
+            if not release_first_copy.wait(timeout=2):
+                raise AssertionError("first history copy was not released")
+        elif call_number == 2:
+            second_copy_started.set()
+        return result
+
+    def append_summary(summary, started_event=None):
+        if started_event is not None:
+            started_event.set()
+        try:
+            append_history_records(summary, output_dir=tmp_path, host="192.0.2.10")
+        except BaseException as exc:
+            errors.append(exc)
+
+    monkeypatch.setattr(cleanup_module.shutil, "copyfileobj", blocking_copyfileobj)
+
+    first_thread = threading.Thread(target=append_summary, args=(first_summary,))
+    second_thread = threading.Thread(target=append_summary, args=(second_summary, second_thread_started))
+    try:
+        first_thread.start()
+        assert first_copy_started.wait(timeout=2)
+        second_thread.start()
+        assert second_thread_started.wait(timeout=2)
+        assert not second_copy_started.wait(timeout=0.2)
+    finally:
+        release_first_copy.set()
+        first_thread.join(timeout=2)
+        second_thread.join(timeout=2)
+
+    assert not first_thread.is_alive()
+    assert not second_thread.is_alive()
+    assert not errors
+    history = [json.loads(line) for line in history_path.read_text(encoding="utf-8").splitlines()]
+    assert [record["mac"] for record in history] == [
+        "aa:bb:cc:00:00:ff",
+        "aa:bb:cc:00:00:01",
+        "aa:bb:cc:00:00:02",
+    ]
