@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 from typing import Callable, Optional
 
 from .connection import CommandConnection, connect_to_mm, run_command as send_mm_command
@@ -19,10 +20,12 @@ class MmSession:
         self.connection_factory = connection_factory or (lambda config, timeout: connect_to_mm(config, timeout=timeout))
         self._connection: Optional[CommandConnection] = None
         self._config: Optional[MmConnectionConfig] = None
+        self._lock = threading.RLock()
 
     @property
     def is_connected(self) -> bool:
-        return self._connection is not None
+        with self._lock:
+            return self._connection is not None
 
     def run_command(
         self,
@@ -33,30 +36,31 @@ class MmSession:
         progress_callback: Optional[ProgressCallback] = None,
         retry_once: bool = True,
     ) -> str:
-        connection = self._ensure_connected(config, settings, progress_callback=progress_callback)
-        try:
-            return send_mm_command(connection, command, timeout=settings.timeout)
-        except Exception as exc:
-            if not retry_once:
-                self.disconnect(progress_callback=progress_callback, reason="command_failed")
-                raise
-            self._emit(
-                progress_callback,
-                "session_reconnect_start",
-                host=config.host,
-                command=command,
-                error=_exception_text(exc),
-            )
-            self.disconnect(progress_callback=progress_callback, reason="reconnect")
+        with self._lock:
+            connection = self._ensure_connected(config, settings, progress_callback=progress_callback)
             try:
-                connection = self._ensure_connected(config, settings, progress_callback=progress_callback)
                 return send_mm_command(connection, command, timeout=settings.timeout)
-            except Exception as retry_exc:
-                self.disconnect(progress_callback=progress_callback, reason="command_failed")
-                raise RuntimeError(
-                    "MM 명령 실행 실패 후 재시도 실패: "
-                    f"최초 오류={_exception_text(exc)}; 재시도 오류={_exception_text(retry_exc)}"
-                ) from retry_exc
+            except Exception as exc:
+                if not retry_once:
+                    self.disconnect(progress_callback=progress_callback, reason="command_failed")
+                    raise
+                self._emit(
+                    progress_callback,
+                    "session_reconnect_start",
+                    host=config.host,
+                    command=command,
+                    error=_exception_text(exc),
+                )
+                self.disconnect(progress_callback=progress_callback, reason="reconnect")
+                try:
+                    connection = self._ensure_connected(config, settings, progress_callback=progress_callback)
+                    return send_mm_command(connection, command, timeout=settings.timeout)
+                except Exception as retry_exc:
+                    self.disconnect(progress_callback=progress_callback, reason="command_failed")
+                    raise RuntimeError(
+                        "MM 명령 실행 실패 후 재시도 실패: "
+                        f"최초 오류={_exception_text(exc)}; 재시도 오류={_exception_text(retry_exc)}"
+                    ) from retry_exc
 
     def disconnect(
         self,
@@ -64,16 +68,22 @@ class MmSession:
         progress_callback: Optional[ProgressCallback] = None,
         reason: str = "manual",
     ) -> None:
-        connection = self._connection
-        self._connection = None
-        self._config = None
-        if connection is None:
-            return
-        try:
-            connection.disconnect()
-        except Exception as exc:
-            self._emit(progress_callback, "warning", message=f"disconnect failed: {_exception_text(exc)}", reason=reason)
-        self._emit(progress_callback, "session_disconnected", reason=reason)
+        with self._lock:
+            connection = self._connection
+            self._connection = None
+            self._config = None
+            if connection is None:
+                return
+            try:
+                connection.disconnect()
+            except Exception as exc:
+                self._emit(
+                    progress_callback,
+                    "warning",
+                    message=f"disconnect failed: {_exception_text(exc)}",
+                    reason=reason,
+                )
+            self._emit(progress_callback, "session_disconnected", reason=reason)
 
     def _ensure_connected(
         self,

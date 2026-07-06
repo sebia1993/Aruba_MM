@@ -31,6 +31,10 @@ def main(argv: Optional[list[str]] = None) -> int:
     role = args.role.strip() or "profiling"
     if args.port < 1 or args.port > 65535:
         parser.error("--port must be between 1 and 65535")
+    if args.timeout < 1:
+        parser.error("--timeout must be at least 1")
+    if args.delay < 0:
+        parser.error("--delay must be at least 0")
     try:
         build_query_command(role)
     except ValueError as exc:
@@ -44,7 +48,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     if not args.yes:
         try:
             answer = input(
-                f"Query role '{args.role}' on {args.host}, then auto-delete after {max(0, args.delay)}s countdown. Continue? [y/N] "
+                f"Query role '{args.role}' on {args.host}, then auto-delete after {args.delay}s countdown. Continue? [y/N] "
             )
         except (EOFError, KeyboardInterrupt):
             print("Canceled before query.")
@@ -60,7 +64,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         port=args.port,
         enable_password=args.enable_password,
     )
-    settings = CleanupSettings(role=role, timeout=max(5, args.timeout), delete_delay_seconds=max(0, args.delay))
+    settings = CleanupSettings(role=role, timeout=args.timeout, delete_delay_seconds=args.delay)
     runner = MmCleanupRunner()
 
     def progress(event: str, payload: dict[str, object]) -> None:

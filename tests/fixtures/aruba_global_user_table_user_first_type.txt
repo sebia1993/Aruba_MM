@@ -1,0 +1,7 @@
+Global User Table
+-----------------
+User Name        MAC Address          IP Address       Role        Type     BSSID              AP Name
+sample-user-i    aa:bb:cc:00:50:01    192.0.2.50       profiling   N/A      11:22:33:44:55:66  sample-ap-06
+sample-user-j    aa-bb-cc-00-50-02    192.0.2.51       profiling   user     22:33:44:55:66:77  sample-ap-07
+sample-user-k    aa:bb:cc:00:50:03    192.0.2.52       employee    user     33:44:55:66:77:88  sample-ap-08
+ap-radio-only    uplink               44:55:66:77:88:99 radio      monitor  55:66:77:88:99:aa  sample-ap-09

@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from dataclasses import replace
 import json
+import os
 import shutil
+import threading
 import time
 from datetime import datetime
 from pathlib import Path
@@ -396,7 +398,10 @@ class MmCleanupRunner:
             except Exception:
                 return False
             self._emit(progress_callback, "countdown", remaining=remaining)
-            self.sleep_func(1)
+            try:
+                self.sleep_func(1)
+            except Exception:
+                return False
             remaining -= 1
         try:
             if should_cancel():
@@ -449,8 +454,7 @@ class MmCleanupRunner:
 
 
 def write_audit_summary(summary: CleanupRunSummary, *, output_dir: Path, host: str) -> Path:
-    run_dir = output_dir / _summary_run_dir_name(summary)
-    run_dir.mkdir(parents=True, exist_ok=True)
+    run_dir = _make_unique_summary_run_dir(output_dir, _summary_run_dir_name(summary))
     path = run_dir / "cleanup_summary.json"
     tmp_path = path.with_name(f"{path.name}.tmp")
     try:
@@ -468,6 +472,18 @@ def write_audit_summary(summary: CleanupRunSummary, *, output_dir: Path, host: s
             pass
         raise
     return path
+
+
+def _make_unique_summary_run_dir(output_dir: Path, base_name: str) -> Path:
+    for index in range(1000):
+        run_name = base_name if index == 0 else f"{base_name}-{index}"
+        run_dir = output_dir / run_name
+        try:
+            run_dir.mkdir(parents=True, exist_ok=False)
+            return run_dir
+        except FileExistsError:
+            continue
+    raise FileExistsError(f"could not create unique audit directory for {base_name!r}")
 
 
 def append_history_records(summary: CleanupRunSummary, *, output_dir: Path, host: str) -> Optional[Path]:
@@ -496,6 +512,7 @@ def append_history_records(summary: CleanupRunSummary, *, output_dir: Path, host
             continue
         success = _delete_result_success(item)
         status = _safe_text(_safe_attr(item, "status", ""))
+        error_text = _safe_text(_safe_attr(item, "error", ""))
         record = {
             "run_at": run_at,
             "host": host_text,
@@ -506,13 +523,13 @@ def append_history_records(summary: CleanupRunSummary, *, output_dir: Path, host
             "status": status or ("deleted" if success else "failed"),
             "response_status": _safe_text(_safe_attr(item, "response_status", "")),
             "verified_absent": _safe_optional_bool(_safe_attr(item, "verified_absent", None)),
-            "error": _safe_attr(item, "error", ""),
+            "error": error_text,
             "reappeared": status == "reappeared",
         }
         lines.append(json.dumps(record, ensure_ascii=False) + "\n")
     if not lines:
         return None
-    tmp_path = path.with_name(f"{path.name}.tmp")
+    tmp_path = _history_tmp_path(path)
     try:
         with tmp_path.open("wb") as tmp_handle:
             try:
@@ -531,6 +548,10 @@ def append_history_records(summary: CleanupRunSummary, *, output_dir: Path, host
             pass
         raise
     return path
+
+
+def _history_tmp_path(path: Path) -> Path:
+    return path.with_name(f"{path.name}.{os.getpid()}.{threading.get_ident()}.tmp")
 
 
 def _summary_run_dir_name(summary: CleanupRunSummary) -> str:
@@ -552,8 +573,14 @@ def _safe_path_fragment(value: str) -> str:
 def classify_delete_response(output: str) -> tuple[str, str]:
     if output is not None and not isinstance(output, str):
         return "unknown", f"확인 필요: 삭제 명령 응답 판정 불가 - {_safe_text(output)}"
-    text = (output or "").strip()
-    normalized = text.casefold()
+    try:
+        text = (output or "").strip()
+    except Exception:
+        return "unknown", "확인 필요: 삭제 명령 응답 판정 불가"
+    try:
+        normalized = text.casefold()
+    except Exception:
+        return "unknown", f"확인 필요: 삭제 명령 응답 판정 불가 - {text}"
     if not text:
         return "unknown", "확인 필요: 삭제 명령 응답이 비어 있음"
 
@@ -571,8 +598,11 @@ def classify_delete_response(output: str) -> tuple[str, str]:
         "failed",
     )
     for marker in failure_markers:
-        if marker in normalized:
-            return "failed", text
+        try:
+            if marker in normalized:
+                return "failed", text
+        except Exception:
+            return "unknown", f"확인 필요: 삭제 명령 응답 판정 불가 - {text}"
 
     unknown_markers = (
         "incomplete",
@@ -584,7 +614,10 @@ def classify_delete_response(output: str) -> tuple[str, str]:
         "continue",
     )
     for marker in unknown_markers:
-        if marker in normalized:
+        try:
+            if marker in normalized:
+                return "unknown", f"확인 필요: 삭제 명령 응답 판정 불가 - {text}"
+        except Exception:
             return "unknown", f"확인 필요: 삭제 명령 응답 판정 불가 - {text}"
 
     success_markers = (
@@ -596,8 +629,11 @@ def classify_delete_response(output: str) -> tuple[str, str]:
         "success",
     )
     for marker in success_markers:
-        if marker in normalized:
-            return "deleted", ""
+        try:
+            if marker in normalized:
+                return "deleted", ""
+        except Exception:
+            return "unknown", f"확인 필요: 삭제 명령 응답 판정 불가 - {text}"
 
     return "unknown", f"확인 필요: 삭제 명령 응답 판정 불가 - {text}"
 

@@ -124,6 +124,27 @@ def test_parse_sanitized_aruba_standard_fixture_ignores_bssid_and_other_roles():
     assert "aa:bb:cc:00:10:03" not in [entry.mac for entry in entries]
 
 
+def test_parse_ignores_row_when_username_matches_filter_but_role_differs():
+    output = """
+Global User Table
+-----------------
+IP              MAC Address          User          Role        VLAN
+10.1.1.10       aa:bb:cc:00:00:01    profiling     employee    30
+10.1.1.11       aa:bb:cc:00:00:02    user-a        profiling   20
+"""
+
+    result = parse_global_user_table_explained(output, role_filter="profiling")
+
+    assert [entry.mac for entry in result.entries] == ["aa:bb:cc:00:00:02"]
+    assert any(
+        item.action == "ignored"
+        and item.reason == "role_mismatch"
+        and item.mac == "aa:bb:cc:00:00:01"
+        and item.role == "employee"
+        for item in result.decisions
+    )
+
+
 def test_parse_sanitized_aruba_compact_fixture_accepts_role_filtered_rows_with_ap_name():
     output = (FIXTURE_DIR / "aruba_global_user_table_filtered_compact.txt").read_text(encoding="utf-8")
 
@@ -136,6 +157,25 @@ def test_parse_sanitized_aruba_compact_fixture_accepts_role_filtered_rows_with_a
     assert "44:55:66:77:88:99" not in [entry.mac for entry in entries]
 
 
+def test_parse_compact_output_ignores_roleless_ap_radio_noise_with_ip():
+    output = """
+Users for role profiling
+------------------------
+User             IP Address      MAC Address          BSSID              AP Name       Age
+sample-user-d    192.0.2.20      aa-bb-cc-00-20-01    44:55:66:77:88:99  sample-ap-04  12
+ap-radio-01      192.0.2.70      66:77:88:99:aa:bb    radio
+"""
+
+    result = parse_global_user_table_explained(output, role_filter="profiling")
+
+    assert [entry.mac for entry in result.entries] == ["aa:bb:cc:00:20:01"]
+    assert "66:77:88:99:aa:bb" not in [entry.mac for entry in result.entries]
+    assert any(
+        item.action == "ignored" and item.reason == "device_mac_noise" and item.mac == "66:77:88:99:aa:bb"
+        for item in result.decisions
+    )
+
+
 def test_parse_sanitized_aruba_dotted_fixture_ignores_ap_radio_mac():
     output = (FIXTURE_DIR / "aruba_global_user_table_dotted.txt").read_text(encoding="utf-8")
 
@@ -146,6 +186,46 @@ def test_parse_sanitized_aruba_dotted_fixture_ignores_ap_radio_mac():
         "aa:bb:cc:00:30:02",
     ]
     assert "66:77:88:99:aa:bb" not in [entry.mac for entry in entries]
+
+
+def test_parse_sanitized_aruba_user_first_fixture_records_type_and_ignores_radio_mac():
+    output = (FIXTURE_DIR / "aruba_global_user_table_user_first_type.txt").read_text(encoding="utf-8")
+
+    result = parse_global_user_table_explained(output, role_filter="profiling")
+
+    assert [entry.mac for entry in result.entries] == [
+        "aa:bb:cc:00:50:01",
+        "aa:bb:cc:00:50:02",
+    ]
+    assert [entry.user_type for entry in result.entries] == ["N/A", "user"]
+    assert [entry.type_na for entry in result.entries] == [True, False]
+    assert "aa:bb:cc:00:50:03" not in [entry.mac for entry in result.entries]
+    assert "44:55:66:77:88:99" not in [entry.mac for entry in result.entries]
+
+
+def test_parse_ignores_cli_prompt_echo_and_pagination_noise():
+    output = """
+(mm-1) #show global-user-table list role profiling
+Global User Table
+-----------------
+IP Address      MAC Address          User             Role        VLAN  BSSID
+192.0.2.60      aa:bb:cc:00:60:01    sample-user-a    profiling   20    11:22:33:44:55:66
+--More--
+(mm-1) #
+192.0.2.61      aa:bb:cc:00:60:02    sample-user-b    profiling   20    22:33:44:55:66:77
+Total Users: 2
+"""
+
+    result = parse_global_user_table_explained(output, role_filter="profiling")
+
+    assert [entry.mac for entry in result.entries] == [
+        "aa:bb:cc:00:60:01",
+        "aa:bb:cc:00:60:02",
+    ]
+    assert "11:22:33:44:55:66" not in [entry.mac for entry in result.entries]
+    ignored_reasons = [item.reason for item in result.decisions if item.action == "ignored"]
+    assert "no_mac_token" in ignored_reasons
+    assert "header_or_command" in ignored_reasons
 
 
 def test_parse_explained_records_selected_and_ignored_reasons():

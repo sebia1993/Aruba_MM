@@ -1,0 +1,151 @@
+"""Tests for parser stability fixes."""
+
+from aruba_mm_cleanup.parser import parse_global_user_table_explained
+
+
+class BadStr(str):
+    """A string subclass that raises RuntimeError on splitlines()."""
+
+    def splitlines(self, *args, **kwargs):
+        raise RuntimeError("bad splitlines")
+
+
+class BadLine(str):
+    """A string subclass whose strip() raises RuntimeError."""
+
+    def strip(self, *args, **kwargs):
+        raise RuntimeError("bad strip")
+
+
+class BadCasefoldLine(str):
+    """A string subclass whose casefold() raises RuntimeError."""
+
+    def casefold(self, *args, **kwargs):
+        raise RuntimeError("bad casefold")
+
+    def strip(self, *args, **kwargs):
+        return self
+
+
+class BadRstripLine(str):
+    """A string subclass whose rstrip() raises RuntimeError."""
+
+    def rstrip(self, *args, **kwargs):
+        raise RuntimeError("bad rstrip")
+
+    def strip(self, *args, **kwargs):
+        return self
+
+
+class BadSplitLine(str):
+    """A string subclass whose strip() returns self and split() raises RuntimeError."""
+
+    def strip(self, *args, **kwargs):
+        return self
+
+    def split(self, *args, **kwargs):
+        raise RuntimeError("bad split")
+
+
+class BadTypeSliceLine(str):
+    """A string subclass whose fixed-width type slice raises RuntimeError."""
+
+    def __getitem__(self, key):
+        if isinstance(key, slice):
+            raise RuntimeError("bad type slice")
+        return super().__getitem__(key)
+
+
+def test_parse_global_user_table_explained_handles_bad_splitlines():
+    """Test that parse_global_user_table_explained handles bad splitlines gracefully."""
+    output = BadStr("some content")
+
+    result = parse_global_user_table_explained(output, role_filter="profiling")
+
+    assert result.entries == []
+    assert len(result.decisions) == 1
+    assert result.decisions[0].action == "ignored"
+    assert result.decisions[0].reason == "invalid_output"
+
+
+def test_parse_global_user_table_explained_handles_bad_line_strip():
+    """Test that parse_global_user_table_explained handles bad line strip gracefully."""
+    class BadOutput(str):
+        def splitlines(self, *args, **kwargs):
+            return [BadLine("some content")]
+
+    output = BadOutput("some content")
+
+    result = parse_global_user_table_explained(output, role_filter="profiling")
+
+    assert result.entries == []
+    assert len(result.decisions) == 1
+    assert result.decisions[0].action == "ignored"
+    assert result.decisions[0].reason == "invalid_line"
+
+
+def test_parse_global_user_table_explained_handles_bad_type_slice():
+    """Test that a broken Type column extraction does not drop an otherwise valid MAC row."""
+    header = f"{'IP':<16}{'MAC Address':<21}{'User':<14}{'Role':<12}{'Type':<8}{'BSSID'}"
+    row = BadTypeSliceLine(
+        f"{'10.1.1.10':<16}{'aa:bb:cc:00:00:01':<21}{'user-a':<14}{'profiling':<12}{'N/A':<8}{'11:22:33:44:55:66'}"
+    )
+
+    class BadOutput(str):
+        def splitlines(self, *args, **kwargs):
+            return [header, row]
+
+    result = parse_global_user_table_explained(BadOutput(""), role_filter="profiling")
+
+    assert [entry.mac for entry in result.entries] == ["aa:bb:cc:00:00:01"]
+    assert result.entries[0].user_type == ""
+    assert result.entries[0].type_na is False
+    assert result.decisions[-1].action == "selected"
+
+
+def test_parse_global_user_table_explained_handles_bad_line_rstrip():
+    """Test that parse_global_user_table_explained handles bad line rstrip gracefully."""
+    class BadOutput(str):
+        def splitlines(self, *args, **kwargs):
+            return [BadRstripLine("some content")]
+
+    output = BadOutput("some content")
+
+    result = parse_global_user_table_explained(output, role_filter="profiling")
+
+    assert result.entries == []
+    assert len(result.decisions) == 1
+    assert result.decisions[0].action == "ignored"
+    assert result.decisions[0].reason == "invalid_line"
+
+
+def test_parse_global_user_table_explained_handles_bad_line_casefold():
+    """Test that parse_global_user_table_explained handles bad line casefold gracefully."""
+    class BadOutput(str):
+        def splitlines(self, *args, **kwargs):
+            return [BadCasefoldLine("some content")]
+
+    output = BadOutput("some content")
+
+    result = parse_global_user_table_explained(output, role_filter="profiling")
+
+    assert result.entries == []
+    assert len(result.decisions) == 1
+    assert result.decisions[0].action == "ignored"
+    assert result.decisions[0].reason == "invalid_line"
+
+
+def test_parse_global_user_table_explained_handles_bad_line_split():
+    """Test that parse_global_user_table_explained handles bad line split gracefully."""
+    class BadOutput(str):
+        def splitlines(self, *args, **kwargs):
+            return [BadSplitLine("00:11:22:33:44:55 some content")]
+
+    output = BadOutput("00:11:22:33:44:55 some content")
+
+    result = parse_global_user_table_explained(output, role_filter="profiling")
+
+    assert result.entries == []
+    assert len(result.decisions) == 1
+    assert result.decisions[0].action == "ignored"
+    assert result.decisions[0].reason == "invalid_line"

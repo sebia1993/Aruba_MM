@@ -48,23 +48,49 @@ def parse_global_user_table_explained(output: str, *, role_filter: str = "profil
     entries: dict[str, UserEntry] = {}
     decisions: list[ParseDecision] = []
     type_spans: list[tuple[int, int]] = []
-    for line_number, line in enumerate(output.splitlines(), start=1):
-        stripped = line.strip()
-        detected_type_spans = _type_column_spans(line)
+    try:
+        lines = output.splitlines()
+    except Exception:
+        return ParseResult(entries=[], decisions=[ParseDecision(0, "ignored", "invalid_output")])
+    for line_number, line in enumerate(lines, start=1):
+        try:
+            stripped = line.strip()
+        except Exception:
+            decisions.append(ParseDecision(line_number, "ignored", "invalid_line"))
+            continue
+        try:
+            detected_type_spans = _type_column_spans(line)
+        except Exception:
+            decisions.append(ParseDecision(line_number, "ignored", "invalid_line"))
+            continue
         if detected_type_spans:
             type_spans = detected_type_spans
             decisions.append(ParseDecision(line_number, "ignored", "header_or_command"))
             continue
-        skip_reason = _skip_reason(stripped)
+        try:
+            skip_reason = _skip_reason(stripped)
+        except Exception:
+            decisions.append(ParseDecision(line_number, "ignored", "invalid_line"))
+            continue
         if skip_reason:
             if stripped:
                 decisions.append(ParseDecision(line_number, "ignored", skip_reason))
             continue
 
-        tokens = stripped.split()
+        try:
+            tokens = stripped.split()
+        except Exception:
+            decisions.append(ParseDecision(line_number, "ignored", "invalid_line"))
+            continue
         mac_index, mac, mac_reason = _target_mac_from_tokens(tokens, role_filter=role)
-        user_type = _extract_type_value(line, type_spans)
-        type_na = user_type.strip().casefold() == "n/a"
+        try:
+            user_type = _extract_type_value(line, type_spans)
+        except Exception:
+            user_type = ""
+        try:
+            type_na = user_type.strip().casefold() == "n/a"
+        except Exception:
+            type_na = False
         if not mac:
             decisions.append(ParseDecision(line_number, "ignored", mac_reason or "no_user_mac", user_type=user_type, type_na=type_na))
             continue
@@ -172,17 +198,19 @@ def _target_mac_from_tokens(tokens: list[str], *, role_filter: str) -> tuple[int
 def _row_matches_role(tokens: list[str], role_filter: str, mac_index: int) -> tuple[bool, str]:
     if not role_filter:
         return True, "role_filter_empty"
-    role_index = _role_index(tokens, role_filter)
-    if role_index >= 0:
-        return True, "role_column_matches"
     role_candidate = _probable_role_token(tokens, mac_index)
     if role_candidate:
         if role_candidate.casefold() == role_filter:
             return True, "probable_role_matches"
         return False, "role_mismatch"
+    role_index = _role_index(tokens, role_filter)
+    if role_index >= 0:
+        return True, "role_column_matches"
     # Some filtered outputs omit a role column. In that shape, accept rows where
     # the user MAC appears in the usual identity columns.
     if 0 <= mac_index <= 3 and _extract_ip(tokens):
+        if _looks_like_device_mac_noise(tokens, mac_index):
+            return False, "device_mac_noise"
         return True, "accepted_filtered_output_without_role_column"
     return False, "role_not_found"
 
@@ -215,6 +243,22 @@ def _probable_role_token(tokens: list[str], mac_index: int) -> str:
     if token.casefold() in {"role", "vlan", "bssid", "ap", "essid"}:
         return ""
     return token
+
+
+def _looks_like_device_mac_noise(tokens: list[str], mac_index: int) -> bool:
+    try:
+        trailing_tokens = tokens[mac_index + 1 : mac_index + 4]
+    except Exception:
+        return False
+    device_markers = {"ap", "bssid", "essid", "monitor", "radio", "uplink"}
+    for token in trailing_tokens:
+        try:
+            normalized = token.strip().casefold()
+        except Exception:
+            continue
+        if normalized in device_markers:
+            return True
+    return False
 
 
 def _extract_username(tokens: list[str], mac_index: int) -> str:

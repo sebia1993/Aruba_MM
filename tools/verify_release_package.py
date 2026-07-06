@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
 import os
 import platform
 import subprocess
 import tempfile
 import zipfile
 from pathlib import Path
-from typing import Optional
+from typing import Iterator, Optional
 
 
 REQUIRED_FILES = {
@@ -68,12 +69,15 @@ def main(argv: Optional[list[str]] = None) -> int:
 
 def _find_latest_zip(dist_dir: Path) -> Path:
     candidates: list[tuple[float, Path]] = []
-    for path in dist_dir.glob("*.zip"):
-        try:
-            mtime = path.stat().st_mtime
-        except OSError:
-            continue
-        candidates.append((mtime, path))
+    try:
+        for path in dist_dir.glob("*.zip"):
+            try:
+                mtime = path.stat().st_mtime
+            except OSError:
+                continue
+            candidates.append((mtime, path))
+    except OSError as exc:
+        raise SystemExit(f"Release ZIP directory is not accessible: {dist_dir}") from exc
     if not candidates:
         raise SystemExit(f"No release ZIP was found in {dist_dir}")
     return max(candidates, key=lambda item: item[0])[1]
@@ -82,12 +86,73 @@ def _find_latest_zip(dist_dir: Path) -> Path:
 def _read_zip_names(zip_path: Path) -> set[str]:
     try:
         with zipfile.ZipFile(zip_path) as archive:
+            names: list[str] = []
+            unsafe_paths: set[str] = set()
+            for info in archive.infolist():
+                name = info.filename.replace("\\", "/").rstrip("/")
+                if _is_unsafe_zip_name(name):
+                    unsafe_paths.add(info.filename)
+                    continue
+                if not info.is_dir():
+                    names.append(name)
+            if unsafe_paths:
+                raise SystemExit(
+                    "Release ZIP contains unsafe paths:\n"
+                    + "\n".join(f"- {item}" for item in sorted(unsafe_paths))
+                )
+            seen: set[str] = set()
+            duplicates: set[str] = set()
+            for name in names:
+                if name in seen:
+                    duplicates.add(name)
+                seen.add(name)
+            if duplicates:
+                raise SystemExit(
+                    "Release ZIP contains duplicate entries:\n"
+                    + "\n".join(f"- {item}" for item in sorted(duplicates))
+                )
             bad_file = archive.testzip()
             if bad_file:
                 raise SystemExit(f"Release ZIP contains a corrupt entry: {bad_file}")
-            return {name.replace("\\", "/").rstrip("/") for name in archive.namelist()}
+            return set(names)
     except zipfile.BadZipFile as exc:
         raise SystemExit(f"Release ZIP is not a valid ZIP file: {zip_path}") from exc
+    except OSError as exc:
+        raise SystemExit(f"Release ZIP could not be read: {zip_path}: {exc}") from exc
+    except RuntimeError as exc:
+        raise SystemExit(f"Release ZIP could not be inspected: {zip_path}: {exc}") from exc
+
+
+def _is_unsafe_zip_name(name: str) -> bool:
+    if not name:
+        return True
+    if name.startswith(("/", "\\")):
+        return True
+    parts = name.replace("\\", "/").split("/")
+    if any(part in {"", ".", ".."} for part in parts):
+        return True
+    first = parts[0]
+    return len(first) >= 2 and first[1] == ":"
+
+
+def _extract_zip_safely(zip_path: Path, extract_dir: Path, *, label: str) -> None:
+    try:
+        with zipfile.ZipFile(zip_path) as archive:
+            unsafe_paths: set[str] = set()
+            for info in archive.infolist():
+                name = info.filename.replace("\\", "/").rstrip("/")
+                if _is_unsafe_zip_name(name):
+                    unsafe_paths.add(info.filename)
+            if unsafe_paths:
+                raise SystemExit(
+                    f"{label} smoke ZIP contains unsafe paths:\n"
+                    + "\n".join(f"- {item}" for item in sorted(unsafe_paths))
+                )
+            archive.extractall(extract_dir)
+    except SystemExit:
+        raise
+    except (zipfile.BadZipFile, OSError, RuntimeError) as exc:
+        raise SystemExit(f"{label} smoke ZIP extraction failed: {exc}") from exc
 
 
 def _smoke_cli_help(zip_path: Path, *, require: bool) -> None:
@@ -96,13 +161,10 @@ def _smoke_cli_help(zip_path: Path, *, require: bool) -> None:
             raise SystemExit("CLI smoke test requires Windows.")
         print("Skipping CLI smoke test on non-Windows host.")
         return
-    with tempfile.TemporaryDirectory(prefix="aruba_mm_cleanup_smoke_") as temp_dir:
+    _read_zip_names(zip_path)
+    with _smoke_temp_directory("aruba_mm_cleanup_smoke_", "CLI") as temp_dir:
         extract_dir = Path(temp_dir)
-        try:
-            with zipfile.ZipFile(zip_path) as archive:
-                archive.extractall(extract_dir)
-        except (zipfile.BadZipFile, OSError, RuntimeError) as exc:
-            raise SystemExit(f"CLI smoke ZIP extraction failed: {exc}") from exc
+        _extract_zip_safely(zip_path, extract_dir, label="CLI")
         cli_exe = extract_dir / "ArubaMMCleanupCLI.exe"
         try:
             completed = subprocess.run(
@@ -129,13 +191,10 @@ def _smoke_gui(zip_path: Path, *, require: bool) -> None:
             raise SystemExit("GUI smoke test requires Windows.")
         print("Skipping GUI smoke test on non-Windows host.")
         return
-    with tempfile.TemporaryDirectory(prefix="aruba_mm_cleanup_gui_smoke_") as temp_dir:
+    _read_zip_names(zip_path)
+    with _smoke_temp_directory("aruba_mm_cleanup_gui_smoke_", "GUI") as temp_dir:
         extract_dir = Path(temp_dir)
-        try:
-            with zipfile.ZipFile(zip_path) as archive:
-                archive.extractall(extract_dir)
-        except (zipfile.BadZipFile, OSError, RuntimeError) as exc:
-            raise SystemExit(f"GUI smoke ZIP extraction failed: {exc}") from exc
+        _extract_zip_safely(zip_path, extract_dir, label="GUI")
         gui_exe = extract_dir / "ArubaMMCleanupGUI.exe"
         env = os.environ.copy()
         env["ARUBA_MM_CLEANUP_GUI_SMOKE"] = "1"
@@ -155,6 +214,21 @@ def _smoke_gui(zip_path: Path, *, require: bool) -> None:
         output = f"{completed.stdout}\n{completed.stderr}"
         if completed.returncode != 0:
             raise SystemExit(f"GUI smoke command failed with exit code {completed.returncode}:\n{output.strip()}")
+
+
+@contextmanager
+def _smoke_temp_directory(prefix: str, label: str) -> Iterator[str]:
+    try:
+        temp_dir = tempfile.TemporaryDirectory(prefix=prefix)
+    except OSError as exc:
+        raise SystemExit(f"{label} smoke temporary directory could not be created: {exc}") from exc
+    try:
+        yield temp_dir.name
+    finally:
+        try:
+            temp_dir.cleanup()
+        except OSError:
+            pass
 
 
 if __name__ == "__main__":

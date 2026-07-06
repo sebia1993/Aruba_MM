@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import deque
+import heapq
 import json
 import os
 import queue
@@ -68,6 +69,7 @@ class ArubaMmCleanupGui(tk.Tk):
         self.runner = MmCleanupRunner(persistent_session=True)
         self.runner_lock = threading.Lock()
         self.session_close_worker: Optional[threading.Thread] = None
+        self.session_close_lock = threading.Lock()
         self.history_row_counter = 0
         self.settings_frame: Optional[tk.Frame] = None
         self.loaded_history_dir: Optional[Path] = None
@@ -528,12 +530,12 @@ class ArubaMmCleanupGui(tk.Tk):
         try:
             initial_dir = self.output_dir_var.get() or str(DEFAULT_OUTPUT_DIR)
             selected = filedialog.askdirectory(initialdir=initial_dir)
-        except tk.TclError:
+        except Exception:
             return
         if selected:
             try:
                 self.output_dir_var.set(selected)
-            except tk.TclError:
+            except Exception:
                 return
             try:
                 self._load_history_from_output_dir(Path(selected), force=True)
@@ -552,7 +554,7 @@ class ArubaMmCleanupGui(tk.Tk):
         except ValueError as exc:
             try:
                 messagebox.showerror("입력 오류", _safe_text(exc) or exc.__class__.__name__)
-            except tk.TclError:
+            except Exception:
                 pass
             return
         try:
@@ -587,7 +589,7 @@ class ArubaMmCleanupGui(tk.Tk):
         except ValueError as exc:
             try:
                 messagebox.showerror("입력 오류", _safe_text(exc) or exc.__class__.__name__)
-            except tk.TclError:
+            except Exception:
                 pass
             return
         try:
@@ -599,15 +601,15 @@ class ArubaMmCleanupGui(tk.Tk):
         self.scheduler_running = True
         try:
             self.manual_button.configure(state="disabled")
-        except tk.TclError:
+        except Exception:
             pass
         try:
             self.schedule_button.configure(state="disabled")
-        except tk.TclError:
+        except Exception:
             pass
         try:
             self.stop_schedule_button.configure(state="normal")
-        except tk.TclError:
+        except Exception:
             pass
         self._sync_settings_visibility()
         self._log(f"주기 실행 시작: {interval}초 간격")
@@ -624,15 +626,15 @@ class ArubaMmCleanupGui(tk.Tk):
             self.scheduler_stop_event.set()
             try:
                 self.manual_button.configure(state="normal")
-            except tk.TclError:
+            except Exception:
                 pass
             try:
                 self.schedule_button.configure(state="normal")
-            except tk.TclError:
+            except Exception:
                 pass
             try:
                 self.stop_schedule_button.configure(state="disabled")
-            except tk.TclError:
+            except Exception:
                 pass
             self._set_timer("-", "대기")
             self._sync_settings_visibility()
@@ -645,15 +647,15 @@ class ArubaMmCleanupGui(tk.Tk):
         self.scheduler_running = False
         try:
             self.manual_button.configure(state="disabled" if self.is_running else "normal")
-        except tk.TclError:
+        except Exception:
             pass
         try:
             self.schedule_button.configure(state="disabled" if self.is_running else "normal")
-        except tk.TclError:
+        except Exception:
             pass
         try:
             self.stop_schedule_button.configure(state="disabled")
-        except tk.TclError:
+        except Exception:
             pass
         self._set_timer("-", "대기")
         self._sync_settings_visibility()
@@ -672,7 +674,7 @@ class ArubaMmCleanupGui(tk.Tk):
         self._start_session_close(reason="manual", enqueue_progress=True)
         try:
             self.status_var.set("세션 연결 해제")
-        except tk.TclError:
+        except Exception:
             pass
         self._log("SESSION DISCONNECT REQUEST")
 
@@ -707,28 +709,46 @@ class ArubaMmCleanupGui(tk.Tk):
         output_dir: Path,
         interval: int,
     ) -> None:
-        while not self.scheduler_stop_event.is_set():
-            self.cancel_event.clear()
-            self._enqueue_event("running", True)
-            try:
-                self._run_summary(config, settings, output_dir)
-            finally:
-                self._enqueue_event("running", False)
-            for remaining in range(interval, 0, -1):
-                if self.scheduler_stop_event.is_set():
+        interval_seconds = _safe_interval_seconds(interval)
+        stop_scheduler = False
+        try:
+            while not self.scheduler_stop_event.is_set() and not stop_scheduler:
+                self.cancel_event.clear()
+                self._enqueue_event("running", True)
+                try:
+                    if self._run_summary(config, settings, output_dir) is False:
+                        stop_scheduler = True
+                except Exception as exc:
+                    error = _safe_text(exc) or exc.__class__.__name__
+                    self._enqueue_event("progress", ("run_error", {"error": error}))
+                    stop_scheduler = True
+                finally:
+                    self._enqueue_event("running", False)
+                if stop_scheduler:
                     break
-                self._enqueue_event("next_run", remaining)
-                if self.scheduler_stop_event.wait(1):
-                    break
-        self._enqueue_event("scheduler_stopped", None)
+                for remaining in range(interval_seconds, 0, -1):
+                    if self.scheduler_stop_event.is_set():
+                        break
+                    self._enqueue_event("next_run", remaining)
+                    try:
+                        if self.scheduler_stop_event.wait(1):
+                            break
+                    except Exception:
+                        stop_scheduler = True
+                        break
+        finally:
+            self._enqueue_event("scheduler_stopped", None)
 
     def _run_once_worker(self, config: MmConnectionConfig, settings: CleanupSettings, output_dir: Path) -> None:
         try:
             self._run_summary(config, settings, output_dir)
+        except Exception as exc:
+            error = _safe_text(exc) or exc.__class__.__name__
+            self._enqueue_event("progress", ("run_error", {"error": error}))
         finally:
             self._enqueue_event("running", False)
 
-    def _run_summary(self, config: MmConnectionConfig, settings: CleanupSettings, output_dir: Path) -> None:
+    def _run_summary(self, config: MmConnectionConfig, settings: CleanupSettings, output_dir: Path) -> bool:
         def progress(event: str, payload: dict[str, object]) -> None:
             self._enqueue_event("progress", (event, payload))
 
@@ -742,9 +762,11 @@ class ArubaMmCleanupGui(tk.Tk):
                     should_cancel=self._should_cancel_run,
                 )
             self._enqueue_event("summary", summary)
+            return True
         except Exception as exc:
             error = _safe_text(exc) or exc.__class__.__name__
             self._enqueue_event("progress", ("run_error", {"error": error}))
+            return False
 
     def _close_runner_session(self, *, reason: str, enqueue_progress: bool) -> None:
         progress = None
@@ -765,23 +787,28 @@ class ArubaMmCleanupGui(tk.Tk):
                     )
 
     def _start_session_close(self, *, reason: str, enqueue_progress: bool) -> None:
-        if self.session_close_worker is not None and self.session_close_worker.is_alive():
-            return
-        try:
-            self.session_close_worker = threading.Thread(
-                target=self._close_runner_session,
-                kwargs={"reason": reason, "enqueue_progress": enqueue_progress},
-                daemon=True,
-            )
-            self.session_close_worker.start()
-        except Exception as exc:
-            self.session_close_worker = None
-            error = _safe_text(exc) or exc.__class__.__name__
-            warning = f"세션 종료 스레드 시작 실패 - {error}"
-            if enqueue_progress:
-                self._enqueue_event("progress", ("warning", {"message": warning, "reason": reason}))
-            else:
-                self._log(f"WARNING: {warning}")
+        with self.session_close_lock:
+            if self.session_close_worker is not None:
+                try:
+                    if self.session_close_worker.is_alive():
+                        return
+                except Exception:
+                    self.session_close_worker = None
+            try:
+                self.session_close_worker = threading.Thread(
+                    target=self._close_runner_session,
+                    kwargs={"reason": reason, "enqueue_progress": enqueue_progress},
+                    daemon=True,
+                )
+                self.session_close_worker.start()
+            except Exception as exc:
+                self.session_close_worker = None
+                error = _safe_text(exc) or exc.__class__.__name__
+                warning = f"세션 종료 스레드 시작 실패 - {error}"
+                if enqueue_progress:
+                    self._enqueue_event("progress", ("warning", {"message": warning, "reason": reason}))
+                else:
+                    self._log(f"WARNING: {warning}")
 
     def _should_cancel_run(self) -> bool:
         return self.cancel_event.is_set() or self.scheduler_stop_event.is_set() or self.closing
@@ -807,6 +834,8 @@ class ArubaMmCleanupGui(tk.Tk):
             output_dir_text = self.output_dir_var.get().strip()
         except (AttributeError, tk.TclError) as exc:
             raise ValueError("입력값을 읽을 수 없습니다.") from exc
+        except Exception as exc:
+            raise ValueError("입력값을 읽을 수 없습니다.") from exc
         if not host:
             raise ValueError("MM IP/Host를 입력하세요.")
         if not username:
@@ -820,9 +849,11 @@ class ArubaMmCleanupGui(tk.Tk):
         if port < 1 or port > 65535:
             raise ValueError("Port는 1부터 65535 사이 숫자로 입력하세요.")
         try:
-            timeout = max(5, int(timeout_text))
+            timeout = int(timeout_text)
         except (TypeError, ValueError, OverflowError) as exc:
             raise ValueError("장비 응답 대기(초)는 숫자로 입력하세요.") from exc
+        if timeout < 1:
+            raise ValueError("장비 응답 대기(초)는 1 이상 숫자로 입력하세요.")
         try:
             build_query_command(role)
         except ValueError as exc:
@@ -849,6 +880,8 @@ class ArubaMmCleanupGui(tk.Tk):
             raise ValueError("주기(초)는 1 이상 숫자로 입력하세요.") from exc
         except (TypeError, ValueError, OverflowError) as exc:
             raise ValueError("주기(초)는 1 이상 숫자로 입력하세요.") from exc
+        except Exception as exc:
+            raise ValueError("주기(초)는 1 이상 숫자로 입력하세요.") from exc
         if interval < MIN_INTERVAL_SECONDS:
             raise ValueError("주기(초)는 1 이상 숫자로 입력하세요.")
         return interval
@@ -861,7 +894,7 @@ class ArubaMmCleanupGui(tk.Tk):
                 queue_item = self.event_queue.get_nowait()
                 try:
                     event, payload = queue_item
-                except (TypeError, ValueError) as exc:
+                except Exception as exc:
                     try:
                         error = _safe_text(exc) or exc.__class__.__name__
                         self._log(f"WARNING: 이벤트 형식 오류 - {error}")
@@ -872,7 +905,15 @@ class ArubaMmCleanupGui(tk.Tk):
                     if event == "running":
                         self._set_running(_safe_bool(payload))
                     elif event == "progress":
-                        progress_event, progress_payload = payload
+                        try:
+                            progress_event, progress_payload = payload
+                        except (TypeError, ValueError) as exc:
+                            try:
+                                error = _safe_text(exc) or exc.__class__.__name__
+                                self._log(f"WARNING: 진행 이벤트 형식 오류 - {error}")
+                            except Exception:
+                                pass
+                            continue
                         if not isinstance(progress_payload, dict):
                             progress_payload = {}
                         progress_event_name = _safe_text(progress_event) or progress_event.__class__.__name__
@@ -906,6 +947,12 @@ class ArubaMmCleanupGui(tk.Tk):
                         pass
         except queue.Empty:
             pass
+        except Exception as exc:
+            try:
+                error = _safe_text(exc) or exc.__class__.__name__
+                self._log(f"WARNING: 이벤트 큐 처리 실패 - {error}")
+            except Exception:
+                pass
         if not self.closing:
             try:
                 self._drain_after_id = self.after(150, self._drain_events)
@@ -998,7 +1045,7 @@ class ArubaMmCleanupGui(tk.Tk):
         elif event == "countdown":
             try:
                 remaining = int(payload.get("remaining", 0))
-            except (TypeError, RuntimeError, OverflowError):
+            except (TypeError, ValueError, RuntimeError, OverflowError):
                 remaining = 0
             self._set_timer(f"{remaining}s", "삭제 시작 대기" if remaining > 0 else "삭제 시작")
             try:
@@ -1007,7 +1054,7 @@ class ArubaMmCleanupGui(tk.Tk):
                 pass
             try:
                 self.cancel_button.configure(state="normal" if remaining > 0 else "disabled")
-            except tk.TclError:
+            except Exception:
                 pass
         elif event == "delete_start":
             try:
@@ -1323,7 +1370,7 @@ class ArubaMmCleanupGui(tk.Tk):
                 self.settings_frame.grid_remove()
             else:
                 self.settings_frame.grid()
-        except tk.TclError:
+        except Exception:
             return
 
     def _append_history_rows(self, summary) -> None:
@@ -1462,14 +1509,17 @@ class ArubaMmCleanupGui(tk.Tk):
         output_dir = output_dir.expanduser()
         if not force and self.loaded_history_dir == output_dir:
             return
-        self.loaded_history_dir = output_dir
         if not hasattr(self, "history_table"):
             return
-        records = self._read_history_records(output_dir)
+        try:
+            records = self._read_history_records(output_dir)
+        except Exception:
+            return
         try:
             self.history_table.delete(*self.history_table.get_children())
         except Exception:
             return
+        self.loaded_history_dir = output_dir
         self.history_row_counter = 0
         for record in records[-MAX_HISTORY_ROWS:]:
             run_at = safe_text(safe_get(record, "run_at", ""))[:19].replace("T", " ")
@@ -1495,7 +1545,7 @@ class ArubaMmCleanupGui(tk.Tk):
         jsonl_path = output_dir / HISTORY_FILE_NAME
         try:
             has_jsonl_history = jsonl_path.exists()
-        except OSError:
+        except Exception:
             has_jsonl_history = False
         if has_jsonl_history:
             records: deque[dict[str, object]] = deque(maxlen=MAX_HISTORY_ROWS)
@@ -1504,23 +1554,35 @@ class ArubaMmCleanupGui(tk.Tk):
                     for line in handle:
                         try:
                             record = json.loads(line)
-                        except (json.JSONDecodeError, RecursionError):
+                        except (json.JSONDecodeError, RecursionError, RuntimeError):
                             continue
                         mac = safe_get(record, "mac", "") if isinstance(record, dict) else ""
                         if isinstance(record, dict) and isinstance(mac, str) and mac:
                             records.append(record)
-            except (OSError, UnicodeError):
-                return list(records)
+            except (OSError, UnicodeError, RuntimeError):
+                return self._read_audit_history_records(output_dir)
             return list(records)
+        return self._read_audit_history_records(output_dir)
+
+    def _read_audit_history_records(self, output_dir: Path) -> list[dict[str, object]]:
+        def safe_text(value: object) -> str:
+            try:
+                return str(value)
+            except Exception:
+                return ""
+
+        def safe_get(mapping: dict[str, object], key: str, default: object) -> object:
+            try:
+                return mapping.get(key, default)
+            except Exception:
+                return default
+
         records: deque[dict[str, object]] = deque(maxlen=MAX_HISTORY_ROWS)
-        try:
-            audit_paths = sorted(output_dir.glob("*/cleanup_summary.json"))
-        except OSError:
-            return list(records)
+        audit_paths = _recent_audit_paths(output_dir)
         for audit_path in audit_paths:
             try:
                 audit = json.loads(audit_path.read_text(encoding="utf-8"))
-            except (OSError, UnicodeError, json.JSONDecodeError, RecursionError):
+            except (OSError, UnicodeError, json.JSONDecodeError, RecursionError, RuntimeError):
                 continue
             if not isinstance(audit, dict):
                 continue
@@ -1612,7 +1674,7 @@ class ArubaMmCleanupGui(tk.Tk):
         try:
             clicked_column = table.identify_column(event.x)
             row_id = table.identify_row(event.y)
-        except (AttributeError, tk.TclError):
+        except Exception:
             return
         if clicked_column != mac_column:
             return
@@ -1620,7 +1682,7 @@ class ArubaMmCleanupGui(tk.Tk):
             return
         try:
             values = list(table.item(row_id, "values"))
-        except (tk.TclError, TypeError):
+        except Exception:
             return
         try:
             column_index = int(mac_column.removeprefix("#")) - 1
@@ -1649,17 +1711,17 @@ class ArubaMmCleanupGui(tk.Tk):
                 pass
         try:
             self.copy_notice_title_var.set("복사 완료")
-        except tk.TclError:
+        except Exception:
             pass
         try:
             self.copy_notice_mac_var.set(mac)
-        except tk.TclError:
+        except Exception:
             pass
         if self.copy_notice_frame is not None:
             try:
                 self.copy_notice_frame.place(relx=0.5, rely=0.5, anchor="center")
                 self.copy_notice_frame.lift()
-            except tk.TclError:
+            except Exception:
                 pass
         try:
             self.copy_notice_after_id = self.after(1000, self._hide_copy_notice)
@@ -1669,23 +1731,23 @@ class ArubaMmCleanupGui(tk.Tk):
     def _hide_copy_notice(self) -> None:
         try:
             self.copy_notice_title_var.set("")
-        except tk.TclError:
+        except Exception:
             pass
         try:
             self.copy_notice_mac_var.set("")
-        except tk.TclError:
+        except Exception:
             pass
         if self.copy_notice_frame is not None:
             try:
                 self.copy_notice_frame.place_forget()
-            except tk.TclError:
+            except Exception:
                 pass
         self.copy_notice_after_id = None
 
     def _destroy_window(self) -> None:
         try:
             self.destroy()
-        except tk.TclError:
+        except Exception:
             pass
 
 
@@ -1704,6 +1766,28 @@ def _unique_display_macs(macs: list[str]) -> list[str]:
         seen.add(normalized)
         unique.append(normalized)
     return unique
+
+
+def _recent_audit_paths(output_dir: Path) -> list[Path]:
+    try:
+        paths = heapq.nlargest(
+            MAX_HISTORY_ROWS,
+            output_dir.glob("*/cleanup_summary.json"),
+            key=_audit_path_sort_key,
+        )
+    except Exception:
+        return []
+    try:
+        return sorted(paths, key=_audit_path_sort_key)
+    except Exception:
+        return []
+
+
+def _audit_path_sort_key(path: Path) -> str:
+    try:
+        return str(path)
+    except Exception:
+        return ""
 
 
 def _merge_status_message(existing: str, update: str) -> str:
@@ -1728,6 +1812,14 @@ def _safe_int(value: object) -> int:
         return int(str(value))
     except Exception:
         return 0
+
+
+def _safe_interval_seconds(value: object) -> int:
+    try:
+        interval = int(str(value))
+    except Exception:
+        return MIN_INTERVAL_SECONDS
+    return max(MIN_INTERVAL_SECONDS, interval)
 
 
 def _safe_bool(value: object) -> bool:

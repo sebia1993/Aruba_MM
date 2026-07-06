@@ -30,9 +30,18 @@ function Wait-ForReadableFile {
 
 Write-Host "Installing runtime and build dependencies..."
 & $PythonExe -m pip install -e ".[dev]" -c ".\constraints.txt"
+if ($LASTEXITCODE -ne 0) {
+    throw "pip install failed with exit code $LASTEXITCODE"
+}
 & $PythonExe -m pip check
+if ($LASTEXITCODE -ne 0) {
+    throw "pip check failed with exit code $LASTEXITCODE"
+}
 
 $version = & $PythonExe -c "from aruba_mm_cleanup import __version__; print(__version__)"
+if ($LASTEXITCODE -ne 0) {
+    throw "version lookup failed with exit code $LASTEXITCODE"
+}
 $guiExeName = "ArubaMMCleanupGUI"
 $cliExeName = "ArubaMMCleanupCLI"
 $distDir = Join-Path $PSScriptRoot "dist"

@@ -1,4 +1,5 @@
 import json
+import threading
 from datetime import datetime
 from pathlib import Path
 import sys
@@ -14,7 +15,7 @@ from aruba_mm_cleanup.cleanup import (
     classify_delete_response,
     write_audit_summary,
 )
-from aruba_mm_cleanup.connection import connect_to_mm
+from aruba_mm_cleanup.connection import connect_to_mm, run_command
 from aruba_mm_cleanup.models import (
     CleanupRunSummary,
     CleanupSettings,
@@ -94,6 +95,31 @@ class FailingCommandAttributeConnection:
 
     def disconnect(self):
         self.disconnected = True
+
+
+def test_run_command_passes_device_response_timeout_as_read_timeout():
+    class TimeoutRecordingConnection:
+        def __init__(self):
+            self.calls = []
+
+        def send_command_timing(self, *, command_string, **kwargs):
+            self.calls.append((command_string, kwargs))
+            return "ok"
+
+    connection = TimeoutRecordingConnection()
+
+    assert run_command(connection, "show version", timeout=17) == "ok"
+    assert connection.calls == [
+        (
+            "show version",
+            {
+                "strip_prompt": False,
+                "strip_command": False,
+                "cmd_verify": False,
+                "read_timeout": 17,
+            },
+        )
+    ]
 
 
 def test_query_result_macs_tolerates_unreadable_entries():
@@ -218,6 +244,11 @@ def test_connect_to_mm_closes_connection_when_enable_fails(monkeypatch):
     assert connection.disconnected is True
     assert captured_params["host"] == "192.0.2.10"
     assert captured_params["secret"] == "enable-secret"
+    assert captured_params["timeout"] == 7
+    assert captured_params["conn_timeout"] == 7
+    assert captured_params["auth_timeout"] == 7
+    assert captured_params["banner_timeout"] == 7
+    assert captured_params["fast_cli"] is False
 
 
 def test_session_disconnect_failure_is_reported_and_session_is_cleared():
@@ -252,6 +283,57 @@ def test_session_disconnect_unprintable_failure_is_reported_and_session_is_clear
     assert session.is_connected is False
     assert ("warning", {"message": "disconnect failed: BadErrorText", "reason": "manual"}) in events
     assert ("session_disconnected", {"reason": "manual"}) in events
+
+
+def test_session_disconnect_waits_for_inflight_command():
+    command = "show version"
+    command_started = threading.Event()
+    command_release = threading.Event()
+    disconnect_attempted = threading.Event()
+    disconnected = threading.Event()
+
+    class BlockingConnection(FakeConnection):
+        def send_command_timing(self, *, command_string, **_kwargs):
+            self.commands.append(command_string)
+            if command_string == command:
+                command_started.set()
+                assert command_release.wait(timeout=2)
+            return ""
+
+        def disconnect(self):
+            self.disconnected = True
+            disconnected.set()
+
+    connection = BlockingConnection(responses={"no paging": "", command: ""})
+    session = MmSession(connection_factory=lambda _config, _timeout: connection)
+    config = MmConnectionConfig(host="192.0.2.10", username="admin", password="secret")
+    settings = CleanupSettings(role="profiling", timeout=5, delete_delay_seconds=0)
+    result = {}
+
+    def run_command():
+        result["output"] = session.run_command(config, settings, command)
+
+    def disconnect_session():
+        disconnect_attempted.set()
+        session.disconnect(reason="manual")
+
+    command_thread = threading.Thread(target=run_command)
+    command_thread.start()
+    assert command_started.wait(timeout=2)
+
+    disconnect_thread = threading.Thread(target=disconnect_session)
+    disconnect_thread.start()
+    assert disconnect_attempted.wait(timeout=2)
+    assert not disconnected.wait(timeout=0.05)
+
+    command_release.set()
+    command_thread.join(timeout=2)
+    disconnect_thread.join(timeout=2)
+
+    assert result["output"] == ""
+    assert connection.commands == ["no paging", command]
+    assert connection.disconnected is True
+    assert session.is_connected is False
 
 
 def test_session_rejects_invalid_connection_object_and_clears_state():
@@ -989,6 +1071,37 @@ def test_run_once_cancels_when_cancel_check_fails_during_countdown(tmp_path):
     assert any(event == "delete_canceled" and payload["count"] == 1 for event, payload in events)
 
 
+def test_run_once_cancels_when_countdown_sleep_fails(tmp_path):
+    first_query = "10.1.1.10 aa:bb:cc:00:00:01 user-a profiling"
+    query_conn = FakeConnection(
+        responses={"no paging": "", "show global-user-table list role profiling": [first_query]}
+    )
+    events = []
+
+    def failing_sleep(_seconds):
+        raise RuntimeError("sleep interrupted")
+
+    runner = MmCleanupRunner(
+        connection_factory=lambda _config, _timeout: query_conn,
+        sleep_func=failing_sleep,
+    )
+
+    summary = runner.run_once(
+        MmConnectionConfig(host="192.0.2.10", username="admin", password="secret"),
+        CleanupSettings(role="profiling", timeout=5, delete_delay_seconds=3),
+        output_dir=tmp_path,
+        progress_callback=lambda event, payload: events.append((event, payload)),
+    )
+
+    assert summary.canceled is True
+    assert summary.error == ""
+    assert summary.remaining_count == 1
+    assert summary.delete_results == []
+    assert summary.audit_path and summary.audit_path.exists()
+    assert "aaa user delete mac aa:bb:cc:00:00:01" not in query_conn.commands
+    assert any(event == "delete_canceled" and payload["count"] == 1 for event, payload in events)
+
+
 def test_run_once_can_cancel_during_delete_loop_before_next_mac(tmp_path):
     first_query = "10.1.1.10 aa:bb:cc:00:00:01 user-a profiling\n10.1.1.11 aa:bb:cc:00:00:02 user-b profiling"
     connection = FakeConnection(
@@ -1320,6 +1433,70 @@ def test_persistent_runner_reuses_session_until_closed(tmp_path):
     runner.close_session()
 
     assert connection.disconnected is True
+
+
+def test_persistent_runner_survives_repeated_query_reconnects(tmp_path):
+    query_command = build_query_command("profiling")
+
+    class DropOnQueryConnection(FakeConnection):
+        def __init__(self, *, drop_on_query_number: int):
+            super().__init__(
+                responses={
+                    "no paging": "",
+                    query_command: ["10.1.1.10 aa:bb:cc:00:00:01 user-a profiling", ""],
+                    "aaa user delete mac aa:bb:cc:00:00:01": "User deleted",
+                }
+            )
+            self.query_count = 0
+            self.drop_on_query_number = drop_on_query_number
+
+        def send_command_timing(self, *, command_string, **kwargs):
+            if command_string == query_command:
+                self.query_count += 1
+                if self.query_count == self.drop_on_query_number:
+                    self.commands.append(command_string)
+                    raise RuntimeError("socket closed")
+            return super().send_command_timing(command_string=command_string, **kwargs)
+
+    first_connection = DropOnQueryConnection(drop_on_query_number=3)
+    second_connection = DropOnQueryConnection(drop_on_query_number=3)
+    third_connection = DropOnQueryConnection(drop_on_query_number=99)
+    connections = [first_connection, second_connection, third_connection]
+    events = []
+    runner = MmCleanupRunner(
+        connection_factory=lambda _config, _timeout: connections.pop(0),
+        persistent_session=True,
+        sleep_func=lambda _seconds: None,
+    )
+    config = MmConnectionConfig(host="192.0.2.10", username="admin", password="secret")
+    settings = CleanupSettings(role="profiling", timeout=5, delete_delay_seconds=0)
+
+    summaries = []
+    for _index in range(3):
+        summaries.append(
+            runner.run_once(
+                config,
+                settings,
+                output_dir=tmp_path,
+                progress_callback=lambda event, payload: events.append((event, payload)),
+            )
+        )
+
+    assert [summary.error for summary in summaries] == ["", "", ""]
+    assert [summary.delete_success_count for summary in summaries] == [1, 1, 1]
+    assert [summary.remaining_count for summary in summaries] == [0, 0, 0]
+    assert connections == []
+    assert first_connection.disconnected is True
+    assert second_connection.disconnected is True
+    assert third_connection.disconnected is False
+    assert sum(1 for event, _payload in events if event == "session_reconnect_start") == 2
+    assert len(list(tmp_path.glob("*/cleanup_summary.json"))) == 3
+    history_path = tmp_path / HISTORY_FILE_NAME
+    assert len(history_path.read_text(encoding="utf-8").splitlines()) == 3
+
+    runner.close_session()
+
+    assert third_connection.disconnected is True
 
 
 def test_stale_session_reconnects_and_retries_command_once(tmp_path):
@@ -2257,24 +2434,70 @@ def test_audit_summary_write_failure_does_not_leave_partial_final_file(tmp_path,
     assert not (run_dirs[0] / "cleanup_summary.json.tmp").exists()
 
 
-def test_history_append_serialization_failure_does_not_partially_append(tmp_path):
+def test_audit_summary_replace_failure_removes_tmp_file(tmp_path, monkeypatch):
+    summary = CleanupRunSummary(started_at=datetime(2026, 7, 2, 13, 0, 0), role="profiling")
+    original_replace = Path.replace
+
+    def failing_summary_replace(path, target):
+        if path.name == "cleanup_summary.json.tmp":
+            raise OSError("replace denied")
+        return original_replace(path, target)
+
+    monkeypatch.setattr(Path, "replace", failing_summary_replace)
+
+    try:
+        write_audit_summary(summary, output_dir=tmp_path, host="192.0.2.10")
+    except OSError as exc:
+        assert "replace denied" in str(exc)
+    else:
+        raise AssertionError("write_audit_summary should report replace failure")
+
+    run_dirs = list(tmp_path.iterdir())
+    assert len(run_dirs) == 1
+    assert not (run_dirs[0] / "cleanup_summary.json").exists()
+    assert not (run_dirs[0] / "cleanup_summary.json.tmp").exists()
+
+
+def test_audit_summary_uses_unique_run_dir_when_summary_path_exists(tmp_path):
+    first_summary = CleanupRunSummary(started_at=datetime(2026, 7, 2, 13, 0, 0), role="profiling")
+    second_summary = CleanupRunSummary(started_at=datetime(2026, 7, 2, 13, 0, 0), role="profiling")
+
+    first_path = write_audit_summary(first_summary, output_dir=tmp_path, host="192.0.2.10")
+    second_path = write_audit_summary(second_summary, output_dir=tmp_path, host="192.0.2.11")
+
+    assert first_path != second_path
+    assert first_path.parent.name == "20260702_130000_000000"
+    assert second_path.parent.name == "20260702_130000_000000-1"
+    assert json.loads(first_path.read_text(encoding="utf-8"))["host"] == "192.0.2.10"
+    assert json.loads(second_path.read_text(encoding="utf-8"))["host"] == "192.0.2.11"
+
+
+def test_history_append_converts_non_serializable_error(tmp_path):
+    class NonSerializableError:
+        def __str__(self):
+            return "non-serializable error"
+
     history_path = tmp_path / HISTORY_FILE_NAME
     original_content = json.dumps({"run_at": "existing", "mac": "aa:bb:cc:00:00:ff"}) + "\n"
     history_path.write_text(original_content, encoding="utf-8")
     summary = CleanupRunSummary(started_at=datetime(2026, 7, 2, 13, 0, 0), role="profiling")
     summary.delete_results = [
         DeleteResult(mac="aa:bb:cc:00:00:01", success=True, command="cmd"),
-        DeleteResult(mac="aa:bb:cc:00:00:02", success=False, command="cmd", error=object()),  # type: ignore[arg-type]
+        DeleteResult(
+            mac="aa:bb:cc:00:00:02",
+            success=False,
+            command="cmd",
+            error=NonSerializableError(),  # type: ignore[arg-type]
+        ),
     ]
 
-    try:
-        append_history_records(summary, output_dir=tmp_path, host="192.0.2.10")
-    except TypeError:
-        pass
-    else:
-        raise AssertionError("append_history_records should report JSON serialization failure")
+    append_history_records(summary, output_dir=tmp_path, host="192.0.2.10")
 
-    assert history_path.read_text(encoding="utf-8") == original_content
+    records = [json.loads(line) for line in history_path.read_text(encoding="utf-8").splitlines()]
+    assert records[0] == {"run_at": "existing", "mac": "aa:bb:cc:00:00:ff"}
+    assert records[1]["mac"] == "aa:bb:cc:00:00:01"
+    assert records[2]["mac"] == "aa:bb:cc:00:00:02"
+    assert records[2]["error"] == "non-serializable error"
 
 
 def test_history_append_streams_existing_history_without_whole_file_read(tmp_path, monkeypatch):
@@ -2321,6 +2544,8 @@ def test_history_append_write_failure_does_not_leave_partial_record(tmp_path, mo
             raise OSError("disk full")
 
     class FailingHistoryTmpWrite:
+        tmp_path = None
+
         def __enter__(self):
             return self
 
@@ -2328,7 +2553,8 @@ def test_history_append_write_failure_does_not_leave_partial_record(tmp_path, mo
             return False
 
         def write(self, data):
-            tmp_path = history_path.with_name(f"{history_path.name}.tmp")
+            tmp_path = self.tmp_path
+            assert tmp_path is not None
             with original_open(tmp_path, "wb") as handle:
                 handle.write(data[:20])
             raise OSError("disk full")
@@ -2336,8 +2562,10 @@ def test_history_append_write_failure_does_not_leave_partial_record(tmp_path, mo
     def failing_history_open(path, mode="r", *args, **kwargs):
         if path == history_path and "a" in mode:
             return FailingHistoryAppend()
-        if path == history_path.with_name(f"{history_path.name}.tmp") and "w" in mode:
-            return FailingHistoryTmpWrite()
+        if path.name.startswith(f"{history_path.name}.") and path.name.endswith(".tmp") and "w" in mode:
+            writer = FailingHistoryTmpWrite()
+            writer.tmp_path = path
+            return writer
         return original_open(path, mode, *args, **kwargs)
 
     monkeypatch.setattr(Path, "open", failing_history_open)
@@ -2350,4 +2578,51 @@ def test_history_append_write_failure_does_not_leave_partial_record(tmp_path, mo
         raise AssertionError("append_history_records should report write failure")
 
     assert history_path.read_bytes() == original_content
-    assert not history_path.with_name(f"{history_path.name}.tmp").exists()
+    assert not list(tmp_path.glob(f"{history_path.name}.*.tmp"))
+
+
+def test_history_append_replace_failure_preserves_existing_history(tmp_path, monkeypatch):
+    history_path = tmp_path / HISTORY_FILE_NAME
+    original_content = b'{"run_at": "existing", "mac": "aa:bb:cc:00:00:ff"}\n'
+    history_path.write_bytes(original_content)
+    summary = CleanupRunSummary(started_at=datetime(2026, 7, 2, 13, 0, 0), role="profiling")
+    summary.delete_results = [
+        DeleteResult(mac="aa:bb:cc:00:00:01", success=True, command="cmd"),
+    ]
+    original_replace = Path.replace
+
+    def failing_tmp_replace(path, target):
+        if path.name.startswith(f"{history_path.name}.") and path.name.endswith(".tmp"):
+            raise OSError("replace denied")
+        return original_replace(path, target)
+
+    monkeypatch.setattr(Path, "replace", failing_tmp_replace)
+
+    try:
+        append_history_records(summary, output_dir=tmp_path, host="192.0.2.10")
+    except OSError as exc:
+        assert "replace denied" in str(exc)
+    else:
+        raise AssertionError("append_history_records should report replace failure")
+
+    assert history_path.read_bytes() == original_content
+    assert not list(tmp_path.glob(f"{history_path.name}.*.tmp"))
+
+
+def test_history_append_does_not_overwrite_stale_shared_tmp_file(tmp_path):
+    history_path = tmp_path / HISTORY_FILE_NAME
+    stale_tmp = history_path.with_name(f"{history_path.name}.tmp")
+    history_path.write_text(json.dumps({"run_at": "existing", "mac": "aa:bb:cc:00:00:ff"}) + "\n", encoding="utf-8")
+    stale_tmp.write_text("stale temp content", encoding="utf-8")
+    summary = CleanupRunSummary(started_at=datetime(2026, 7, 2, 13, 0, 0), role="profiling")
+    summary.delete_results = [
+        DeleteResult(mac="aa:bb:cc:00:00:01", success=True, command="cmd"),
+    ]
+
+    path = append_history_records(summary, output_dir=tmp_path, host="192.0.2.10")
+
+    assert path == history_path
+    assert stale_tmp.read_text(encoding="utf-8") == "stale temp content"
+    assert not list(tmp_path.glob(f"{history_path.name}.*.tmp"))
+    history = [json.loads(line) for line in history_path.read_text(encoding="utf-8").splitlines()]
+    assert [record["mac"] for record in history] == ["aa:bb:cc:00:00:ff", "aa:bb:cc:00:00:01"]

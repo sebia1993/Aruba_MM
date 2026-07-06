@@ -83,6 +83,11 @@ class BadQueueItem:
         raise BadValueErrorText()
 
 
+class RuntimeFailingQueueItem:
+    def __iter__(self):
+        raise RuntimeError("queue item failed")
+
+
 class FakeButton:
     def __init__(self):
         self.config = {}
@@ -122,6 +127,14 @@ class DestroyedSettingsFrame(FakeSettingsFrame):
 
     def grid(self):
         raise tk.TclError("invalid command name")
+
+
+class UnexpectedFailingSettingsFrame(FakeSettingsFrame):
+    def grid_remove(self):
+        raise RuntimeError("settings frame failed")
+
+    def grid(self):
+        raise RuntimeError("settings frame failed")
 
 
 class FakeHistoryTable:
@@ -230,6 +243,11 @@ class IdentifyFailingTreeTable(FakeTreeTable):
 
     def identify_row(self, _y):
         raise tk.TclError("invalid command name")
+
+
+class UnexpectedIdentifyFailingTreeTable(FakeTreeTable):
+    def identify_column(self, _x):
+        raise RuntimeError("table identify failed")
 
 
 class DestroyedHistoryTable(FakeHistoryTable):
@@ -356,9 +374,19 @@ class PlacementFailingOverlayFrame(FakeOverlayFrame):
         raise tk.TclError("invalid command name")
 
 
+class UnexpectedPlacementFailingOverlayFrame(FakeOverlayFrame):
+    def place(self, **_kwargs):
+        raise RuntimeError("overlay placement failed")
+
+
 class HideFailingOverlayFrame(FakeOverlayFrame):
     def place_forget(self):
         raise tk.TclError("invalid command name")
+
+
+class UnexpectedHideFailingOverlayFrame(FakeOverlayFrame):
+    def place_forget(self):
+        raise RuntimeError("overlay hide failed")
 
 
 def make_headless_gui():
@@ -384,6 +412,7 @@ def make_headless_gui():
     app.event_queue = queue.Queue()
     app.cancel_event = threading.Event()
     app.scheduler_stop_event = threading.Event()
+    app.session_close_lock = threading.Lock()
     app.scheduler_running = False
     app.is_running = False
     app.closing = False
@@ -474,6 +503,15 @@ def test_read_inputs_uses_immediate_delete_and_device_timeout():
     assert str(output_dir) == "/tmp/aruba-mm-cleanup"
 
 
+def test_read_inputs_uses_actual_one_second_device_timeout():
+    app = make_input_gui()
+    app.timeout_var.set("1")
+
+    _config, settings, _output_dir = ArubaMmCleanupGui._read_inputs(app)
+
+    assert settings.timeout == 1
+
+
 def test_read_inputs_expands_user_home_output_dir():
     app = make_input_gui()
     app.output_dir_var.set("~/aruba-mm-cleanup")
@@ -486,6 +524,15 @@ def test_read_inputs_expands_user_home_output_dir():
 def test_read_inputs_reports_clear_timeout_errors():
     app = make_input_gui()
     app.timeout_var.set("slow")
+
+    with pytest.raises(ValueError, match="장비 응답 대기"):
+        ArubaMmCleanupGui._read_inputs(app)
+
+
+@pytest.mark.parametrize("value", ["0", "-1"])
+def test_read_inputs_rejects_non_positive_device_timeout(value):
+    app = make_input_gui()
+    app.timeout_var.set(value)
 
     with pytest.raises(ValueError, match="장비 응답 대기"):
         ArubaMmCleanupGui._read_inputs(app)
@@ -524,6 +571,27 @@ def test_read_inputs_rejects_out_of_range_ports(value):
 def test_read_inputs_reports_destroyed_input_variables(field_name):
     app = make_input_gui()
     setattr(app, field_name, FailingGetVar(""))
+
+    with pytest.raises(ValueError, match="입력값"):
+        ArubaMmCleanupGui._read_inputs(app)
+
+
+@pytest.mark.parametrize(
+    "field_name",
+    [
+        "host_var",
+        "username_var",
+        "password_var",
+        "port_var",
+        "timeout_var",
+        "role_var",
+        "enable_password_var",
+        "output_dir_var",
+    ],
+)
+def test_read_inputs_reports_unexpected_input_variable_failures(field_name):
+    app = make_input_gui()
+    setattr(app, field_name, UnexpectedGetFailingVar(""))
 
     with pytest.raises(ValueError, match="입력값"):
         ArubaMmCleanupGui._read_inputs(app)
@@ -592,6 +660,14 @@ def test_read_interval_reports_destroyed_interval_variable():
         ArubaMmCleanupGui._read_interval(app)
 
 
+def test_read_interval_reports_unexpected_interval_variable_failure():
+    app = make_input_gui()
+    app.interval_var = UnexpectedGetFailingVar("1")
+
+    with pytest.raises(ValueError, match="주기\\(초\\)"):
+        ArubaMmCleanupGui._read_interval(app)
+
+
 def test_read_interval_reports_malformed_interval_variable():
     app = make_input_gui()
     app.interval_var = FakeVar(None)
@@ -649,6 +725,23 @@ def test_browse_output_dir_ignores_dialog_tcl_error(monkeypatch):
     assert loaded == []
 
 
+def test_browse_output_dir_ignores_unexpected_dialog_failure(monkeypatch):
+    app = make_headless_gui()
+    app.output_dir_var = FakeVar("/tmp/current")
+    loaded = []
+    app._load_history_from_output_dir = lambda path, force=False: loaded.append((path, force))
+    monkeypatch.setattr(
+        gui_app_module.filedialog,
+        "askdirectory",
+        lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("dialog failed")),
+    )
+
+    ArubaMmCleanupGui.browse_output_dir(app)
+
+    assert app.output_dir_var.get() == "/tmp/current"
+    assert loaded == []
+
+
 def test_browse_output_dir_ignores_destroyed_output_dir_variable(monkeypatch):
     app = make_headless_gui()
     app.output_dir_var = FailingGetVar("/tmp/current")
@@ -665,9 +758,41 @@ def test_browse_output_dir_ignores_destroyed_output_dir_variable(monkeypatch):
     assert loaded == []
 
 
+def test_browse_output_dir_ignores_unexpected_output_dir_variable_failure(monkeypatch):
+    app = make_headless_gui()
+    app.output_dir_var = UnexpectedGetFailingVar("/tmp/current")
+    loaded = []
+    app._load_history_from_output_dir = lambda path, force=False: loaded.append((path, force))
+    monkeypatch.setattr(
+        gui_app_module.filedialog,
+        "askdirectory",
+        lambda **_kwargs: "/tmp/selected",
+    )
+
+    ArubaMmCleanupGui.browse_output_dir(app)
+
+    assert loaded == []
+
+
 def test_browse_output_dir_ignores_destroyed_output_dir_set(monkeypatch):
     app = make_headless_gui()
     app.output_dir_var = FailingSetVar("/tmp/current")
+    loaded = []
+    app._load_history_from_output_dir = lambda path, force=False: loaded.append((path, force))
+    monkeypatch.setattr(
+        gui_app_module.filedialog,
+        "askdirectory",
+        lambda **_kwargs: "/tmp/selected",
+    )
+
+    ArubaMmCleanupGui.browse_output_dir(app)
+
+    assert loaded == []
+
+
+def test_browse_output_dir_ignores_unexpected_output_dir_set_failure(monkeypatch):
+    app = make_headless_gui()
+    app.output_dir_var = UnexpectedSetFailingVar("/tmp/current")
     loaded = []
     app._load_history_from_output_dir = lambda path, force=False: loaded.append((path, force))
     monkeypatch.setattr(
@@ -708,6 +833,23 @@ def test_manual_run_input_error_dialog_failure_does_not_start_worker(monkeypatch
         gui_app_module.messagebox,
         "showerror",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(tk.TclError("invalid command name")),
+    )
+
+    ArubaMmCleanupGui.start_manual_run(app)
+
+    assert app.is_running is False
+    assert app.event_queue.empty()
+
+
+def test_manual_run_unexpected_input_error_dialog_failure_does_not_start_worker(monkeypatch):
+    app = make_headless_gui()
+    app._read_inputs = lambda: (_ for _ in ()).throw(ValueError("bad input"))
+    app._load_history_from_output_dir = lambda *_args, **_kwargs: None
+    app._set_running = lambda _running: (_ for _ in ()).throw(AssertionError("worker should not start"))
+    monkeypatch.setattr(
+        gui_app_module.messagebox,
+        "showerror",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("dialog failed")),
     )
 
     ArubaMmCleanupGui.start_manual_run(app)
@@ -814,6 +956,23 @@ def test_scheduler_input_error_dialog_failure_does_not_start_scheduler(monkeypat
     assert app.event_queue.empty()
 
 
+def test_scheduler_unexpected_input_error_dialog_failure_does_not_start_scheduler(monkeypatch):
+    app = make_headless_gui()
+    app._read_inputs = lambda: (_ for _ in ()).throw(ValueError("bad input"))
+    app._load_history_from_output_dir = lambda *_args, **_kwargs: None
+    app._set_running = lambda _running: (_ for _ in ()).throw(AssertionError("scheduler should not start"))
+    monkeypatch.setattr(
+        gui_app_module.messagebox,
+        "showerror",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("dialog failed")),
+    )
+
+    ArubaMmCleanupGui.start_scheduler(app)
+
+    assert app.scheduler_running is False
+    assert app.event_queue.empty()
+
+
 def test_scheduler_unprintable_input_error_does_not_start_scheduler(monkeypatch):
     app = make_headless_gui()
     app._read_inputs = lambda: (_ for _ in ()).throw(BadValueErrorText())
@@ -853,6 +1012,30 @@ def test_scheduler_history_load_failure_still_starts_scheduler(monkeypatch):
     assert "주기 실행 시작: 5초 간격" in app.logs
 
 
+def test_scheduler_unexpected_button_failure_still_starts_scheduler(monkeypatch):
+    class FakeThread:
+        def __init__(self, *_args, **_kwargs):
+            self.started = False
+
+        def start(self):
+            self.started = True
+
+    app = make_headless_gui()
+    app._read_inputs = lambda: (object(), object(), Path("outputs"))
+    app._read_interval = lambda: 5
+    app._load_history_from_output_dir = lambda *_args, **_kwargs: None
+    app.manual_button = UnexpectedConfigureFailingButton()
+    app.schedule_button = UnexpectedConfigureFailingButton()
+    app.stop_schedule_button = UnexpectedConfigureFailingButton()
+    monkeypatch.setattr(gui_app_module.threading, "Thread", FakeThread)
+
+    ArubaMmCleanupGui.start_scheduler(app)
+
+    assert app.scheduler_running is True
+    assert app.scheduler_worker.started is True
+    assert "주기 실행 시작: 5초 간격" in app.logs
+
+
 def test_scheduler_thread_start_failure_resets_scheduler_state(monkeypatch):
     class FailingThread:
         def __init__(self, *_args, **_kwargs):
@@ -875,6 +1058,32 @@ def test_scheduler_thread_start_failure_resets_scheduler_state(monkeypatch):
     assert app.manual_button.config["state"] == "normal"
     assert app.schedule_button.config["state"] == "normal"
     assert app.stop_schedule_button.config["state"] == "disabled"
+    assert app.timers[-1] == ("-", "대기")
+    assert "WARNING: 주기 실행 스레드 시작 실패 - thread start failed" in app.logs
+
+
+def test_scheduler_thread_start_failure_with_unexpected_button_failure_still_resets_state(monkeypatch):
+    class FailingThread:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def start(self):
+            raise RuntimeError("thread start failed")
+
+    app = make_headless_gui()
+    app._read_inputs = lambda: (object(), object(), Path("outputs"))
+    app._read_interval = lambda: 5
+    app._load_history_from_output_dir = lambda *_args, **_kwargs: None
+    app.manual_button = UnexpectedConfigureFailingButton()
+    app.schedule_button = UnexpectedConfigureFailingButton()
+    app.stop_schedule_button = UnexpectedConfigureFailingButton()
+    monkeypatch.setattr(gui_app_module.threading, "Thread", FailingThread)
+
+    ArubaMmCleanupGui.start_scheduler(app)
+
+    assert app.scheduler_running is False
+    assert app.scheduler_worker is None
+    assert app.scheduler_stop_event.is_set()
     assert app.timers[-1] == ("-", "대기")
     assert "WARNING: 주기 실행 스레드 시작 실패 - thread start failed" in app.logs
 
@@ -1006,6 +1215,31 @@ def test_disconnect_status_update_failure_does_not_skip_log():
     assert "SESSION DISCONNECT REQUEST" in app.logs
 
 
+def test_disconnect_unexpected_status_update_failure_does_not_skip_log():
+    app = make_headless_gui()
+    app.status_var = UnexpectedSetFailingVar()
+    close_reasons = []
+    app._start_session_close = lambda **kwargs: close_reasons.append(kwargs)
+
+    ArubaMmCleanupGui.disconnect_session(app)
+
+    assert close_reasons == [{"reason": "manual", "enqueue_progress": True}]
+    assert "SESSION DISCONNECT REQUEST" in app.logs
+
+
+def test_disconnect_session_does_not_close_session_while_run_is_active():
+    app = make_headless_gui()
+    app.is_running = True
+    close_reasons = []
+    app._start_session_close = lambda **kwargs: close_reasons.append(kwargs)
+
+    ArubaMmCleanupGui.disconnect_session(app)
+
+    assert close_reasons == []
+    assert "실행 중에는 세션 연결 해제를 건너뜁니다." in app.logs
+    assert "SESSION DISCONNECT REQUEST" not in app.logs
+
+
 def test_warning_progress_handles_unprintable_message_without_losing_warning():
     app = make_headless_gui()
 
@@ -1091,6 +1325,16 @@ def test_countdown_progress_handles_failing_remaining_conversion():
     assert app.timers[-1] == ("0s", "삭제 시작")
     assert app.status_var.get() == "삭제 시작"
     assert app.cancel_button.config["state"] == "disabled"
+
+
+def test_countdown_progress_unexpected_button_failure_keeps_status_update():
+    app = make_headless_gui()
+    app.cancel_button = UnexpectedConfigureFailingButton()
+
+    ArubaMmCleanupGui._handle_progress(app, "countdown", {"remaining": 5})
+
+    assert app.timers[-1] == ("5s", "삭제 시작 대기")
+    assert app.status_var.get() == "5초 후 삭제 시작"
 
 
 def test_query_done_adds_unique_display_macs_to_cumulative_total():
@@ -1699,14 +1943,14 @@ def test_enqueue_event_returns_false_when_queue_put_fails():
     assert ArubaMmCleanupGui._enqueue_event(app, "running", True) is False
 
 
-def test_drain_events_logs_bad_event_and_continues():
+def test_drain_events_handles_bad_countdown_payload_and_continues():
     app = make_headless_gui()
     app.event_queue.put(("progress", ("countdown", {"remaining": "bad"})))
     app.event_queue.put(("scheduler_stopped", None))
 
     ArubaMmCleanupGui._drain_events(app)
 
-    assert any("이벤트 처리 실패(progress)" in message for message in app.logs)
+    assert not any("이벤트 처리 실패(progress)" in message for message in app.logs)
     assert app.scheduler_running is False
     assert app.stop_schedule_button.config["state"] == "disabled"
     assert app.timers[-1] == ("-", "대기")
@@ -1727,6 +1971,20 @@ def test_drain_events_logs_malformed_queue_item_and_continues():
     assert app.scheduled_callbacks[-1][0] == 150
 
 
+def test_drain_events_logs_malformed_progress_payload_and_continues():
+    app = make_headless_gui()
+    app.scheduler_running = True
+    app.event_queue.put(("progress", None))
+    app.event_queue.put(("scheduler_stopped", None))
+
+    ArubaMmCleanupGui._drain_events(app)
+
+    assert any("진행 이벤트 형식 오류" in message for message in app.logs)
+    assert not any("이벤트 처리 실패(progress)" in message for message in app.logs)
+    assert app.scheduler_running is False
+    assert app.timers[-1] == ("-", "대기")
+
+
 def test_drain_events_logs_unprintable_malformed_queue_error_and_continues():
     app = make_headless_gui()
     app.scheduler_running = True
@@ -1736,6 +1994,19 @@ def test_drain_events_logs_unprintable_malformed_queue_error_and_continues():
     ArubaMmCleanupGui._drain_events(app)
 
     assert "WARNING: 이벤트 형식 오류 - BadValueErrorText" in app.logs
+    assert app.scheduler_running is False
+    assert app.timers[-1] == ("-", "대기")
+
+
+def test_drain_events_logs_unexpected_malformed_queue_error_and_continues():
+    app = make_headless_gui()
+    app.scheduler_running = True
+    app.event_queue.put(RuntimeFailingQueueItem())
+    app.event_queue.put(("scheduler_stopped", None))
+
+    ArubaMmCleanupGui._drain_events(app)
+
+    assert "WARNING: 이벤트 형식 오류 - queue item failed" in app.logs
     assert app.scheduler_running is False
     assert app.timers[-1] == ("-", "대기")
 
@@ -1816,6 +2087,18 @@ def test_sync_settings_visibility_ignores_destroyed_settings_frame():
     ArubaMmCleanupGui._sync_settings_visibility(app)
 
 
+def test_sync_settings_visibility_ignores_unexpected_settings_frame_failure():
+    app = make_headless_gui()
+    app.settings_frame = UnexpectedFailingSettingsFrame()
+    app.is_running = True
+    app.scheduler_running = False
+
+    ArubaMmCleanupGui._sync_settings_visibility(app)
+
+    app.is_running = False
+    ArubaMmCleanupGui._sync_settings_visibility(app)
+
+
 def test_drain_events_handles_missing_progress_payload_as_empty_dict():
     app = make_headless_gui()
     app.event_queue.put(("progress", ("connect_start", None)))
@@ -1870,6 +2153,20 @@ def test_drain_events_handles_unprintable_next_run_payload():
     assert not any("이벤트 처리 실패(next_run)" in message for message in app.logs)
 
 
+def test_drain_events_logs_queue_get_failure_and_reschedules():
+    class GetFailingQueue:
+        def get_nowait(self):
+            raise RuntimeError("queue get failed")
+
+    app = make_headless_gui()
+    app.event_queue = GetFailingQueue()
+
+    ArubaMmCleanupGui._drain_events(app)
+
+    assert "WARNING: 이벤트 큐 처리 실패 - queue get failed" in app.logs
+    assert app.scheduled_callbacks[-1][0] == 150
+
+
 def test_drain_events_ignores_reschedule_failure():
     app = make_headless_gui()
     app._drain_after_id = "old-after"
@@ -1904,6 +2201,21 @@ def test_run_once_worker_reports_unexpected_runner_failure_and_resets_running():
     assert app.event_queue.empty()
 
 
+def test_run_once_worker_reports_direct_run_summary_failure_and_resets_running():
+    app = make_headless_gui()
+
+    def fail_summary(*_args, **_kwargs):
+        raise RuntimeError("summary failed")
+
+    app._run_summary = fail_summary
+
+    ArubaMmCleanupGui._run_once_worker(app, object(), object(), Path("outputs"))
+
+    assert app.event_queue.get_nowait() == ("progress", ("run_error", {"error": "summary failed"}))
+    assert app.event_queue.get_nowait() == ("running", False)
+    assert app.event_queue.empty()
+
+
 def test_run_summary_reports_unprintable_unexpected_runner_failure():
     app = make_headless_gui()
     app.runner_lock = threading.Lock()
@@ -1934,6 +2246,135 @@ def test_scheduler_loop_reports_unexpected_runner_failure_and_stops_cleanly():
     assert app.event_queue.empty()
 
 
+def test_scheduler_loop_stops_after_runner_failure_without_waiting_next_run():
+    app = make_headless_gui()
+    app.runner_lock = threading.Lock()
+    wait_calls = []
+    app.runner = SimpleNamespace(
+        run_once=lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("runner failed"))
+    )
+
+    def wait_after_failure(seconds):
+        wait_calls.append(seconds)
+        app.scheduler_stop_event.set()
+        return True
+
+    app.scheduler_stop_event.wait = wait_after_failure  # type: ignore[method-assign]
+
+    ArubaMmCleanupGui._scheduler_loop(app, object(), object(), Path("outputs"), 1)
+
+    assert wait_calls == []
+    assert list(app.event_queue.queue) == [
+        ("running", True),
+        ("progress", ("run_error", {"error": "runner failed"})),
+        ("running", False),
+        ("scheduler_stopped", None),
+    ]
+
+
+def test_scheduler_loop_reports_direct_run_summary_failure_and_stops_cleanly():
+    app = make_headless_gui()
+
+    def fail_summary(*_args, **_kwargs):
+        raise RuntimeError("summary failed")
+
+    app._run_summary = fail_summary
+
+    ArubaMmCleanupGui._scheduler_loop(app, object(), object(), Path("outputs"), 1)
+
+    assert app.event_queue.get_nowait() == ("running", True)
+    assert app.event_queue.get_nowait() == ("progress", ("run_error", {"error": "summary failed"}))
+    assert app.event_queue.get_nowait() == ("running", False)
+    assert app.event_queue.get_nowait() == ("scheduler_stopped", None)
+    assert app.event_queue.empty()
+
+
+def test_scheduler_loop_repeats_cycles_without_stale_cancel_or_running_state():
+    app = make_headless_gui()
+    runs = []
+    app.scheduler_stop_event.wait = lambda _seconds: False  # type: ignore[method-assign]
+
+    def run_summary(config, settings, output_dir):
+        runs.append((config, settings, output_dir, app.cancel_event.is_set()))
+        app.cancel_event.set()
+        if len(runs) == 3:
+            app.scheduler_stop_event.set()
+
+    app._run_summary = run_summary
+
+    ArubaMmCleanupGui._scheduler_loop(app, "config", "settings", Path("outputs"), 1)
+
+    assert runs == [
+        ("config", "settings", Path("outputs"), False),
+        ("config", "settings", Path("outputs"), False),
+        ("config", "settings", Path("outputs"), False),
+    ]
+    assert list(app.event_queue.queue) == [
+        ("running", True),
+        ("running", False),
+        ("next_run", 1),
+        ("running", True),
+        ("running", False),
+        ("next_run", 1),
+        ("running", True),
+        ("running", False),
+        ("scheduler_stopped", None),
+    ]
+
+
+def test_scheduler_loop_coerces_unexpected_interval_and_stops_cleanly():
+    class BadInterval:
+        def __str__(self):
+            raise RuntimeError("bad interval")
+
+    app = make_headless_gui()
+    runs = []
+
+    def run_summary(config, settings, output_dir):
+        runs.append((config, settings, output_dir))
+
+    def wait_once(seconds):
+        app.scheduler_stop_event.set()
+        return True
+
+    app._run_summary = run_summary
+    app.scheduler_stop_event.wait = wait_once  # type: ignore[method-assign]
+
+    ArubaMmCleanupGui._scheduler_loop(app, "config", "settings", Path("outputs"), BadInterval())  # type: ignore[arg-type]
+
+    assert runs == [("config", "settings", Path("outputs"))]
+    assert list(app.event_queue.queue) == [
+        ("running", True),
+        ("running", False),
+        ("next_run", MIN_INTERVAL_SECONDS),
+        ("scheduler_stopped", None),
+    ]
+
+
+def test_scheduler_loop_stops_cleanly_when_wait_fails():
+    app = make_headless_gui()
+    runs = []
+
+    def run_summary(config, settings, output_dir):
+        runs.append((config, settings, output_dir))
+
+    def failing_wait(_seconds):
+        raise RuntimeError("wait failed")
+
+    app._run_summary = run_summary
+    app.scheduler_stop_event.wait = failing_wait  # type: ignore[method-assign]
+
+    ArubaMmCleanupGui._scheduler_loop(app, "config", "settings", Path("outputs"), 1)
+
+    assert runs == [("config", "settings", Path("outputs"))]
+    assert list(app.event_queue.queue) == [
+        ("running", True),
+        ("running", False),
+        ("next_run", 1),
+        ("scheduler_stopped", None),
+    ]
+
+
 def test_on_close_sets_flags_and_schedules_bounded_destroy_without_direct_close():
     app = make_headless_gui()
     app._drain_after_id = "drain-id"
@@ -1952,6 +2393,54 @@ def test_on_close_sets_flags_and_schedules_bounded_destroy_without_direct_close(
     assert canceled == ["drain-id"]
     assert close_calls == [{"reason": "app_close", "enqueue_progress": False}]
     assert scheduled[0][0] == SHUTDOWN_GRACE_MS
+
+
+def test_scheduler_stop_cancel_disconnect_and_close_do_not_duplicate_session_close():
+    class AliveCloseWorker:
+        def is_alive(self):
+            return True
+
+    app = make_headless_gui()
+    app.scheduler_running = True
+    app.is_running = False
+    app.session_close_worker = AliveCloseWorker()
+    app._drain_after_id = "drain-id"
+    app.copy_notice_after_id = "copy-notice-id"
+    scheduled = []
+    app.after = lambda ms, callback: scheduled.append((ms, callback)) or "shutdown-id"
+
+    ArubaMmCleanupGui.stop_scheduler(app)
+    ArubaMmCleanupGui.cancel_current_delete(app)
+    ArubaMmCleanupGui.disconnect_session(app)
+    ArubaMmCleanupGui.on_close(app)
+
+    assert app.scheduler_running is False
+    assert app.scheduler_stop_event.is_set()
+    assert app.cancel_event.is_set()
+    assert app.closing is True
+    assert isinstance(app.session_close_worker, AliveCloseWorker)
+    assert app.canceled_after_ids == ["drain-id", "copy-notice-id"]
+    assert scheduled[0][0] == SHUTDOWN_GRACE_MS
+    assert "주기 실행 정지 요청" in app.logs
+    assert "이번 삭제 취소 요청" in app.logs
+    assert "SESSION DISCONNECT REQUEST" in app.logs
+
+
+def test_stop_scheduler_unexpected_button_failure_still_finishes_stop():
+    app = make_headless_gui()
+    app.scheduler_running = True
+    app.is_running = False
+    app.manual_button = UnexpectedConfigureFailingButton()
+    app.schedule_button = UnexpectedConfigureFailingButton()
+    app.stop_schedule_button = UnexpectedConfigureFailingButton()
+
+    ArubaMmCleanupGui.stop_scheduler(app)
+
+    assert app.scheduler_running is False
+    assert app.scheduler_stop_event.is_set()
+    assert app.cancel_event.is_set()
+    assert app.timers[-1] == ("-", "대기")
+    assert "주기 실행 정지 요청" in app.logs
 
 
 def test_on_close_destroys_window_when_shutdown_after_fails():
@@ -2022,6 +2511,13 @@ def test_on_close_destroys_window_when_shutdown_after_unexpectedly_fails():
     assert app.closing is True
     assert close_calls == [{"reason": "app_close", "enqueue_progress": False}]
     assert destroy_calls == ["destroyed"]
+
+
+def test_destroy_window_ignores_unexpected_destroy_failure():
+    app = make_headless_gui()
+    app.destroy = lambda: (_ for _ in ()).throw(RuntimeError("destroy failed"))
+
+    ArubaMmCleanupGui._destroy_window(app)
 
 
 def test_gui_smoke_main_uses_safe_destroy_when_destroy_raises(monkeypatch):
@@ -2146,6 +2642,73 @@ def test_start_session_close_thread_create_failure_does_not_raise(monkeypatch):
         ),
     )
     assert app.event_queue.empty()
+
+
+def test_start_session_close_recovers_when_existing_worker_state_fails():
+    class BrokenWorker:
+        def is_alive(self):
+            raise RuntimeError("worker state failed")
+
+    app = make_headless_gui()
+    app.runner_lock = threading.Lock()
+    close_calls = []
+    app.runner = SimpleNamespace(close_session=lambda **kwargs: close_calls.append(kwargs))
+    app.session_close_worker = BrokenWorker()
+
+    ArubaMmCleanupGui._start_session_close(app, reason="manual", enqueue_progress=False)
+
+    app.session_close_worker.join(timeout=2)
+    assert not app.session_close_worker.is_alive()
+    assert len(close_calls) == 1
+    assert close_calls[0]["progress_callback"] is None
+    assert close_calls[0]["reason"] == "manual"
+
+
+def test_start_session_close_serializes_concurrent_worker_creation(monkeypatch):
+    original_thread = threading.Thread
+    constructor_entered = threading.Event()
+    release_constructor = threading.Event()
+    created_workers = []
+
+    class SlowCloseWorker:
+        def __init__(self, *_args, **_kwargs):
+            created_workers.append(self)
+            constructor_entered.set()
+            release_constructor.wait(timeout=2)
+
+        def start(self):
+            pass
+
+        def is_alive(self):
+            return True
+
+    app = make_headless_gui()
+    app.runner_lock = threading.Lock()
+    app.runner = SimpleNamespace(close_session=lambda **_kwargs: None)
+    app.session_close_worker = None
+    monkeypatch.setattr(gui_app_module.threading, "Thread", SlowCloseWorker)
+
+    first = original_thread(
+        target=lambda: ArubaMmCleanupGui._start_session_close(app, reason="manual", enqueue_progress=False)
+    )
+    second = original_thread(
+        target=lambda: ArubaMmCleanupGui._start_session_close(app, reason="app_close", enqueue_progress=False)
+    )
+
+    first.start()
+    assert constructor_entered.wait(timeout=2)
+    second.start()
+    time.sleep(0.05)
+
+    assert len(created_workers) == 1
+
+    release_constructor.set()
+    first.join(timeout=2)
+    second.join(timeout=2)
+
+    assert not first.is_alive()
+    assert not second.is_alive()
+    assert len(created_workers) == 1
 
 
 def test_on_close_continues_when_session_close_thread_start_fails(monkeypatch):
@@ -2348,6 +2911,32 @@ def test_history_load_ignores_destroyed_history_table(tmp_path):
     assert app.history_row_counter == 1
 
 
+def test_history_load_retries_same_directory_after_read_failure(tmp_path):
+    output_dir = tmp_path / "outputs"
+    output_dir.mkdir()
+    app = make_headless_gui()
+    app.history_table = FakeHistoryTable()
+    app.history_row_counter = 0
+    app.loaded_history_dir = None
+    attempts = []
+
+    def flaky_read_history(_output_dir):
+        attempts.append("read")
+        if len(attempts) == 1:
+            raise RuntimeError("history read failed")
+        return [{"run_at": "2026-07-02T13:00:00", "mac": "aa:bb:cc:00:00:01"}]
+
+    app._read_history_records = flaky_read_history
+
+    app._load_history_from_output_dir(output_dir)
+    app._load_history_from_output_dir(output_dir)
+
+    assert attempts == ["read", "read"]
+    assert app.loaded_history_dir == output_dir
+    rows = [app.history_table.rows[item]["values"] for item in app.history_table.get_children()]
+    assert rows == [("2026-07-02 13:00:00", "aa:bb:cc:00:00:01", "삭제 실패", "")]
+
+
 def test_history_load_ignores_unexpected_history_table_delete_failure(tmp_path):
     output_dir = tmp_path / "outputs"
     output_dir.mkdir()
@@ -2508,6 +3097,213 @@ def test_history_read_uses_audit_fallback_when_jsonl_exists_check_fails(tmp_path
     ]
 
 
+def test_history_read_uses_audit_fallback_when_jsonl_exists_unexpectedly_fails(tmp_path, monkeypatch):
+    output_dir = tmp_path / "outputs"
+    run_dir = output_dir / "20260702_130000_000000"
+    run_dir.mkdir(parents=True)
+    (run_dir / "cleanup_summary.json").write_text(
+        json.dumps(
+            {
+                "started_at": "2026-07-02T13:00:00",
+                "delete_results": [
+                    {
+                        "mac": "aa:bb:cc:00:00:01",
+                        "status": "verified_deleted",
+                        "success": True,
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    original_exists = Path.exists
+
+    def failing_history_exists(path):
+        if path.name == HISTORY_FILE_NAME:
+            raise RuntimeError("history path state unavailable")
+        return original_exists(path)
+
+    monkeypatch.setattr(Path, "exists", failing_history_exists)
+    app = make_headless_gui()
+
+    loaded = app._read_history_records(output_dir)
+
+    assert loaded == [
+        {
+            "mac": "aa:bb:cc:00:00:01",
+            "status": "verified_deleted",
+            "success": True,
+            "run_at": "2026-07-02T13:00:00",
+            "reappeared": False,
+        }
+    ]
+
+
+def test_history_read_uses_audit_fallback_when_jsonl_read_fails(tmp_path):
+    output_dir = tmp_path / "outputs"
+    run_dir = output_dir / "20260702_130000_000000"
+    run_dir.mkdir(parents=True)
+    (output_dir / HISTORY_FILE_NAME).write_bytes(b"\xff\xfeinvalid history")
+    (run_dir / "cleanup_summary.json").write_text(
+        json.dumps(
+            {
+                "started_at": "2026-07-02T13:00:00",
+                "delete_results": [
+                    {
+                        "mac": "aa:bb:cc:00:00:01",
+                        "status": "verified_deleted",
+                        "success": True,
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    app = make_headless_gui()
+
+    loaded = app._read_history_records(output_dir)
+
+    assert loaded == [
+        {
+            "mac": "aa:bb:cc:00:00:01",
+            "status": "verified_deleted",
+            "success": True,
+            "run_at": "2026-07-02T13:00:00",
+            "reappeared": False,
+        }
+    ]
+
+
+def test_history_read_uses_audit_fallback_when_jsonl_stream_unexpectedly_fails(tmp_path, monkeypatch):
+    class FailingHistoryHandle:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def __iter__(self):
+            raise RuntimeError("history stream failed")
+
+    output_dir = tmp_path / "outputs"
+    run_dir = output_dir / "20260702_130000_000000"
+    run_dir.mkdir(parents=True)
+    history_path = output_dir / HISTORY_FILE_NAME
+    history_path.write_text("placeholder", encoding="utf-8")
+    (run_dir / "cleanup_summary.json").write_text(
+        json.dumps(
+            {
+                "started_at": "2026-07-02T13:00:00",
+                "delete_results": [
+                    {
+                        "mac": "aa:bb:cc:00:00:01",
+                        "status": "verified_deleted",
+                        "success": True,
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    original_open = Path.open
+
+    def failing_history_open(path, *args, **kwargs):
+        if path == history_path:
+            return FailingHistoryHandle()
+        return original_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", failing_history_open)
+    app = make_headless_gui()
+
+    loaded = app._read_history_records(output_dir)
+
+    assert loaded == [
+        {
+            "mac": "aa:bb:cc:00:00:01",
+            "status": "verified_deleted",
+            "success": True,
+            "run_at": "2026-07-02T13:00:00",
+            "reappeared": False,
+        }
+    ]
+
+
+def test_history_read_returns_empty_when_audit_glob_unexpectedly_fails(tmp_path, monkeypatch):
+    output_dir = tmp_path / "outputs"
+    output_dir.mkdir()
+    original_exists = Path.exists
+
+    def no_jsonl_history(path):
+        if path.name == HISTORY_FILE_NAME:
+            return False
+        return original_exists(path)
+
+    def failing_audit_glob(path, pattern):
+        if path == output_dir and pattern == "*/cleanup_summary.json":
+            raise RuntimeError("audit glob failed")
+        return ()
+
+    monkeypatch.setattr(Path, "exists", no_jsonl_history)
+    monkeypatch.setattr(Path, "glob", failing_audit_glob)
+    app = make_headless_gui()
+
+    assert app._read_history_records(output_dir) == []
+
+
+def test_history_read_audit_fallback_reads_only_recent_audit_paths(tmp_path, monkeypatch):
+    output_dir = tmp_path / "outputs"
+    output_dir.mkdir()
+    audit_paths = [
+        output_dir / f"20260702_{index:06d}" / "cleanup_summary.json"
+        for index in range(MAX_HISTORY_ROWS + 3)
+    ]
+    blocked_oldest = audit_paths[0]
+    path_indexes = {path: index for index, path in enumerate(audit_paths)}
+    original_exists = Path.exists
+    original_glob = Path.glob
+    original_read_text = Path.read_text
+
+    def no_jsonl_history(path):
+        if path.name == HISTORY_FILE_NAME:
+            return False
+        return original_exists(path)
+
+    def fake_audit_glob(path, pattern):
+        if path == output_dir and pattern == "*/cleanup_summary.json":
+            return iter(audit_paths)
+        return original_glob(path, pattern)
+
+    def fake_audit_read_text(path, *args, **kwargs):
+        if path == blocked_oldest:
+            raise AssertionError("old audit path should not be read")
+        if path in path_indexes:
+            index = path_indexes[path]
+            return json.dumps(
+                {
+                    "started_at": f"2026-07-02T13:{index % 60:02d}:00",
+                    "delete_results": [
+                        {
+                            "mac": f"aa:bb:cc:{index // 65536:02x}:{(index // 256) % 256:02x}:{index % 256:02x}",
+                            "status": "verified_deleted",
+                            "success": True,
+                        }
+                    ],
+                }
+            )
+        return original_read_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "exists", no_jsonl_history)
+    monkeypatch.setattr(Path, "glob", fake_audit_glob)
+    monkeypatch.setattr(Path, "read_text", fake_audit_read_text)
+    app = make_headless_gui()
+
+    loaded = app._read_history_records(output_dir)
+
+    assert len(loaded) == MAX_HISTORY_ROWS
+    assert loaded[0]["mac"] == "aa:bb:cc:00:00:03"
+    assert loaded[-1]["mac"] == "aa:bb:cc:00:01:f6"
+
+
 def test_history_load_ignores_invalid_encoding_jsonl(tmp_path):
     output_dir = tmp_path / "outputs"
     output_dir.mkdir()
@@ -2539,6 +3335,33 @@ def test_history_read_skips_recursion_error_jsonl_record(tmp_path, monkeypatch):
     def fake_loads(payload):
         if payload.strip() == "bad-recursive-json":
             raise RecursionError("too deeply nested")
+        return original_loads(payload)
+
+    monkeypatch.setattr(gui_app_module.json, "loads", fake_loads)
+    app = make_headless_gui()
+
+    loaded = app._read_history_records(output_dir)
+
+    assert loaded == [{"run_at": "2026-07-02T13:00:00", "mac": "aa:bb:cc:00:00:01"}]
+
+
+def test_history_read_skips_runtime_error_jsonl_record(tmp_path, monkeypatch):
+    output_dir = tmp_path / "outputs"
+    output_dir.mkdir()
+    (output_dir / HISTORY_FILE_NAME).write_text(
+        "\n".join(
+            [
+                "bad-runtime-json",
+                json.dumps({"run_at": "2026-07-02T13:00:00", "mac": "aa:bb:cc:00:00:01"}),
+            ]
+        ),
+        encoding="utf-8",
+    )
+    original_loads = json.loads
+
+    def fake_loads(payload):
+        if payload.strip() == "bad-runtime-json":
+            raise RuntimeError("history record failed")
         return original_loads(payload)
 
     monkeypatch.setattr(gui_app_module.json, "loads", fake_loads)
@@ -2653,6 +3476,53 @@ def test_history_read_skips_recursion_error_audit_fallback(tmp_path, monkeypatch
         return original_loads(payload)
 
     monkeypatch.setattr(gui_app_module.json, "loads", fake_loads)
+    app = make_headless_gui()
+
+    loaded = app._read_history_records(output_dir)
+
+    assert loaded == [
+        {
+            "mac": "aa:bb:cc:00:00:01",
+            "status": "verified_deleted",
+            "success": True,
+            "run_at": "2026-07-02T13:00:00",
+            "reappeared": False,
+        }
+    ]
+
+
+def test_history_read_skips_unexpected_audit_read_failure(tmp_path, monkeypatch):
+    output_dir = tmp_path / "outputs"
+    bad_run_dir = output_dir / "20260702_125900_000000"
+    good_run_dir = output_dir / "20260702_130000_000000"
+    bad_run_dir.mkdir(parents=True)
+    good_run_dir.mkdir(parents=True)
+    bad_audit = bad_run_dir / "cleanup_summary.json"
+    good_audit = good_run_dir / "cleanup_summary.json"
+    bad_audit.write_text("locked audit", encoding="utf-8")
+    good_audit.write_text(
+        json.dumps(
+            {
+                "started_at": "2026-07-02T13:00:00",
+                "delete_results": [
+                    {
+                        "mac": "aa:bb:cc:00:00:01",
+                        "status": "verified_deleted",
+                        "success": True,
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    original_read_text = Path.read_text
+
+    def failing_read_text(path, *args, **kwargs):
+        if path == bad_audit:
+            raise RuntimeError("audit read failed")
+        return original_read_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", failing_read_text)
     app = make_headless_gui()
 
     loaded = app._read_history_records(output_dir)
@@ -3906,6 +4776,36 @@ def test_mac_copy_ignores_destroyed_table_identify_failure():
     assert app.scheduled_callbacks == []
 
 
+def test_mac_copy_ignores_unexpected_table_identify_failure():
+    app = make_headless_gui()
+    table = UnexpectedIdentifyFailingTreeTable()
+
+    ArubaMmCleanupGui._copy_mac_from_table_event(app, FakeClickEvent(), table, "#1")
+
+    assert app.clipboard_values == []
+    assert app.copy_notice_title_var.get() == ""
+    assert app.copy_notice_mac_var.get() == ""
+    assert app.scheduled_callbacks == []
+
+
+def test_mac_copy_ignores_unexpected_table_item_failure():
+    app = make_headless_gui()
+    table = UnexpectedItemFailingTreeTable()
+    table.insert(
+        "",
+        "end",
+        iid="aa:bb:cc:00:00:01",
+        values=("aa:bb:cc:00:00:01", "삭제 대상", "2026-07-02 13:00:00", "", ""),
+    )
+
+    ArubaMmCleanupGui._copy_mac_from_table_event(app, FakeClickEvent(), table, "#1")
+
+    assert app.clipboard_values == []
+    assert app.copy_notice_title_var.get() == ""
+    assert app.copy_notice_mac_var.get() == ""
+    assert app.scheduled_callbacks == []
+
+
 def test_mac_copy_ignores_malformed_click_event():
     app = make_headless_gui()
     table = FakeTreeTable()
@@ -3956,6 +4856,28 @@ def test_show_copy_notice_ignores_destroyed_notice_variables():
     assert app.copy_notice_after_id == "after-1"
 
 
+def test_show_copy_notice_ignores_unexpected_notice_variable_failures():
+    app = make_headless_gui()
+    app.copy_notice_title_var = UnexpectedSetFailingVar("")
+    app.copy_notice_mac_var = UnexpectedSetFailingVar("")
+
+    ArubaMmCleanupGui._show_copy_notice(app, "aa:bb:cc:00:00:01")
+
+    assert app.copy_notice_frame.hidden is False
+    assert app.copy_notice_after_id == "after-1"
+
+
+def test_show_copy_notice_ignores_unexpected_overlay_place_failure():
+    app = make_headless_gui()
+    app.copy_notice_frame = UnexpectedPlacementFailingOverlayFrame()
+
+    ArubaMmCleanupGui._show_copy_notice(app, "aa:bb:cc:00:00:01")
+
+    assert app.copy_notice_title_var.get() == "복사 완료"
+    assert app.copy_notice_mac_var.get() == "aa:bb:cc:00:00:01"
+    assert app.copy_notice_after_id == "after-1"
+
+
 def test_hide_copy_notice_clears_state_when_overlay_hide_fails():
     app = make_headless_gui()
     app.copy_notice_frame = HideFailingOverlayFrame()
@@ -3980,6 +4902,34 @@ def test_hide_copy_notice_ignores_destroyed_notice_variables():
     ArubaMmCleanupGui._hide_copy_notice(app)
 
     assert app.copy_notice_frame.hidden is True
+    assert app.copy_notice_after_id is None
+
+
+def test_hide_copy_notice_ignores_unexpected_notice_variable_failures():
+    app = make_headless_gui()
+    app.copy_notice_title_var = UnexpectedSetFailingVar("복사 완료")
+    app.copy_notice_mac_var = UnexpectedSetFailingVar("aa:bb:cc:00:00:01")
+    app.copy_notice_after_id = "after-1"
+    app.copy_notice_frame.hidden = False
+
+    ArubaMmCleanupGui._hide_copy_notice(app)
+
+    assert app.copy_notice_frame.hidden is True
+    assert app.copy_notice_after_id is None
+
+
+def test_hide_copy_notice_ignores_unexpected_overlay_hide_failure():
+    app = make_headless_gui()
+    app.copy_notice_frame = UnexpectedHideFailingOverlayFrame()
+    app.copy_notice_title_var.set("복사 완료")
+    app.copy_notice_mac_var.set("aa:bb:cc:00:00:01")
+    app.copy_notice_after_id = "after-1"
+    app.copy_notice_frame.hidden = False
+
+    ArubaMmCleanupGui._hide_copy_notice(app)
+
+    assert app.copy_notice_title_var.get() == ""
+    assert app.copy_notice_mac_var.get() == ""
     assert app.copy_notice_after_id is None
 
 
