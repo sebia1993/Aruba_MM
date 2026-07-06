@@ -220,14 +220,14 @@ def _smoke_gui(zip_path: Path, *, require: bool) -> None:
 def _smoke_temp_directory(prefix: str, label: str) -> Iterator[str]:
     try:
         temp_dir = tempfile.TemporaryDirectory(prefix=prefix)
-    except OSError as exc:
+    except Exception as exc:
         raise SystemExit(f"{label} smoke temporary directory could not be created: {exc}") from exc
     try:
         yield temp_dir.name
     finally:
         try:
             temp_dir.cleanup()
-        except OSError:
+        except Exception:
             pass
 
 

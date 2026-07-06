@@ -326,6 +326,24 @@ def test_release_zip_verifier_reports_gui_smoke_temp_directory_failure(tmp_path,
     assert "temp denied" in str(exc_info.value)
 
 
+def test_release_zip_verifier_reports_temp_directory_runtime_failure(tmp_path, monkeypatch):
+    zip_path = tmp_path / "release.zip"
+    with zipfile.ZipFile(zip_path, "w") as archive:
+        archive.writestr("ArubaMMCleanupCLI.exe", "sample")
+
+    monkeypatch.setattr("tools.verify_release_package.platform.system", lambda: "Windows")
+    monkeypatch.setattr(
+        "tools.verify_release_package.tempfile.TemporaryDirectory",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("temp runtime failure")),
+    )
+
+    with pytest.raises(SystemExit) as exc_info:
+        _smoke_cli_help(zip_path, require=True)
+
+    assert "CLI smoke temporary directory could not be created" in str(exc_info.value)
+    assert "temp runtime failure" in str(exc_info.value)
+
+
 def test_release_zip_verifier_ignores_cli_smoke_temp_cleanup_failure(tmp_path, monkeypatch):
     zip_path = tmp_path / "release.zip"
     with zipfile.ZipFile(zip_path, "w") as archive:
@@ -344,6 +362,33 @@ def test_release_zip_verifier_ignores_cli_smoke_temp_cleanup_failure(tmp_path, m
     monkeypatch.setattr(
         "tools.verify_release_package.tempfile.TemporaryDirectory",
         lambda *args, **kwargs: CleanupFailingTempDir(),
+    )
+    monkeypatch.setattr(
+        "tools.verify_release_package.subprocess.run",
+        lambda args, **kwargs: subprocess.CompletedProcess(args, 0, stdout="--host --role", stderr=""),
+    )
+
+    _smoke_cli_help(zip_path, require=True)
+
+
+def test_release_zip_verifier_ignores_temp_cleanup_runtime_failure(tmp_path, monkeypatch):
+    zip_path = tmp_path / "release.zip"
+    with zipfile.ZipFile(zip_path, "w") as archive:
+        archive.writestr("ArubaMMCleanupCLI.exe", "sample")
+
+    smoke_dir = tmp_path / "smoke"
+    smoke_dir.mkdir()
+
+    class CleanupRuntimeFailingTempDir:
+        name = str(smoke_dir)
+
+        def cleanup(self):
+            raise RuntimeError("cleanup runtime failure")
+
+    monkeypatch.setattr("tools.verify_release_package.platform.system", lambda: "Windows")
+    monkeypatch.setattr(
+        "tools.verify_release_package.tempfile.TemporaryDirectory",
+        lambda *args, **kwargs: CleanupRuntimeFailingTempDir(),
     )
     monkeypatch.setattr(
         "tools.verify_release_package.subprocess.run",
