@@ -56,6 +56,13 @@ class BadTypeSliceLine(str):
         return super().__getitem__(key)
 
 
+class BadToken(str):
+    """A token whose strip() raises RuntimeError."""
+
+    def strip(self, *args, **kwargs):
+        raise RuntimeError("bad token strip")
+
+
 def test_parse_global_user_table_explained_handles_bad_splitlines():
     """Test that parse_global_user_table_explained handles bad splitlines gracefully."""
     output = BadStr("some content")
@@ -149,3 +156,22 @@ def test_parse_global_user_table_explained_handles_bad_line_split():
     assert len(result.decisions) == 1
     assert result.decisions[0].action == "ignored"
     assert result.decisions[0].reason == "invalid_line"
+
+
+def test_parse_global_user_table_explained_handles_bad_role_lookup_token():
+    """Test that a bad token before the role column does not abort parsing."""
+    class BadTokenLine(str):
+        def strip(self, *args, **kwargs):
+            return self
+
+        def split(self, *args, **kwargs):
+            return [BadToken("bad"), "10.1.1.10", "aa:bb:cc:00:00:01", "user-a", "profiling"]
+
+    class BadOutput(str):
+        def splitlines(self, *args, **kwargs):
+            return [BadTokenLine("bad 10.1.1.10 aa:bb:cc:00:00:01 user-a profiling")]
+
+    result = parse_global_user_table_explained(BadOutput(""), role_filter="profiling")
+
+    assert [entry.mac for entry in result.entries] == ["aa:bb:cc:00:00:01"]
+    assert result.decisions[-1].action == "selected"

@@ -219,7 +219,11 @@ def _role_index(tokens: list[str], role_filter: str) -> int:
     if not role_filter:
         return -1
     for index, token in enumerate(tokens):
-        if token.strip().casefold() == role_filter:
+        try:
+            token_value = token.strip().casefold()
+        except Exception:
+            continue
+        if token_value == role_filter:
             return index
     return -1
 
