@@ -93,11 +93,11 @@ def main(argv: Optional[list[str]] = None) -> int:
     print(f"Remaining: {_safe_output_text(remaining_count)}")
     print(f"Reappeared: {_safe_output_text(reappeared_count)}")
     print(f"Audit: {_safe_output_text(audit_path)}")
-    if audit_error:
+    if _safe_truthy(audit_error):
         print(f"Audit warning: {_safe_output_text(audit_error)}")
-    if history_error:
+    if _safe_truthy(history_error):
         print(f"History warning: {_safe_output_text(history_error)}")
-    return 1 if error or delete_failure_count or reappeared_count else 0
+    return 1 if _safe_truthy(error) or _safe_truthy(delete_failure_count) or _safe_truthy(reappeared_count) else 0
 
 
 def _summary_value(summary: object, name: str, default: object) -> object:
@@ -119,6 +119,13 @@ def _safe_output_text(value: object) -> str:
         return str(value)
     except Exception:
         return ""
+
+
+def _safe_truthy(value: object) -> bool:
+    try:
+        return bool(value)
+    except Exception:
+        return True
 
 
 if __name__ == "__main__":

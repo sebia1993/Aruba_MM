@@ -902,6 +902,47 @@ def test_cli_handles_unprintable_summary_values(monkeypatch, capsys):
     assert "Audit:" in output
 
 
+def test_cli_handles_unreadable_summary_truthiness(monkeypatch, capsys):
+    class BadBool:
+        def __bool__(self):
+            raise RuntimeError("bad bool")
+
+        def __str__(self):
+            return "bad-bool"
+
+    class FakeRunner:
+        def run_once(self, *_args, **_kwargs):
+            return SimpleNamespace(
+                queried_count=0,
+                delete_success_count=0,
+                delete_failure_count=BadBool(),
+                remaining_count=0,
+                reappeared_count=BadBool(),
+                audit_path=None,
+                audit_error=BadBool(),
+                history_error=BadBool(),
+                error=BadBool(),
+            )
+
+    monkeypatch.setattr("aruba_mm_cleanup.cli.MmCleanupRunner", lambda: FakeRunner())
+
+    result = cli_main(
+        [
+            "--host",
+            "192.0.2.10",
+            "--username",
+            "admin",
+            "--password",
+            "secret",
+            "--yes",
+        ]
+    )
+
+    output = capsys.readouterr().out
+    assert result == 1
+    assert "Failed: bad-bool" in output
+
+
 def test_cli_expands_user_home_output_dir(monkeypatch):
     captured = {}
 
