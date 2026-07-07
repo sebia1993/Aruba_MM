@@ -22,13 +22,22 @@ def main(argv: Optional[list[str]] = None) -> int:
     parser.add_argument("--output-dir", type=Path, default=Path("outputs"), help="audit output directory")
     parser.add_argument("--yes", action="store_true", help="run without an interactive pre-countdown confirmation")
     args = parser.parse_args(argv)
-    host = args.host.strip()
+    try:
+        host = args.host.strip()
+    except Exception:
+        parser.error("--host must not be empty")
     if not host:
         parser.error("--host must not be empty")
-    username = args.username.strip()
+    try:
+        username = args.username.strip()
+    except Exception:
+        parser.error("--username must not be empty")
     if not username:
         parser.error("--username must not be empty")
-    role = args.role.strip() or "profiling"
+    try:
+        role = args.role.strip() or "profiling"
+    except Exception:
+        parser.error("Role이 올바르지 않습니다.")
     if args.port < 1 or args.port > 65535:
         parser.error("--port must be between 1 and 65535")
     if args.timeout < 1:

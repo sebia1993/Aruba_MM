@@ -653,6 +653,52 @@ def test_cli_rejects_empty_host_before_connecting(monkeypatch, capsys):
     assert "--host must not be empty" in capsys.readouterr().err
 
 
+@pytest.mark.parametrize(
+    ("option", "value", "expected_error"),
+    [
+        ("--host", "192.0.2.10", "--host must not be empty"),
+        ("--username", "admin", "--username must not be empty"),
+        ("--role", "profiling", "Role"),
+    ],
+)
+def test_cli_rejects_unstrippable_text_args_before_connecting(
+    option,
+    value,
+    expected_error,
+    monkeypatch,
+    capsys,
+):
+    class BadStripArg(str):
+        def strip(self, *_args, **_kwargs):
+            raise RuntimeError("bad strip")
+
+    def fail_runner():
+        raise AssertionError("runner should not be created for invalid text args")
+
+    monkeypatch.setattr("aruba_mm_cleanup.cli.MmCleanupRunner", fail_runner)
+    args = [
+        "--host",
+        "192.0.2.10",
+        "--username",
+        "admin",
+        "--password",
+        "secret",
+        "--role",
+        "profiling",
+        "--yes",
+    ]
+    args[args.index(option) + 1] = BadStripArg(value)
+
+    try:
+        cli_main(args)
+    except SystemExit as exc:
+        assert exc.code == 2
+    else:
+        raise AssertionError("CLI should reject unstrippable text args")
+
+    assert expected_error in capsys.readouterr().err
+
+
 def test_cli_rejects_empty_username_before_connecting(monkeypatch, capsys):
     def fail_runner():
         raise AssertionError("runner should not be created for empty username")
