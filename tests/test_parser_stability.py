@@ -172,6 +172,31 @@ def test_parse_global_user_table_explained_handles_bad_line_split():
     assert result.decisions[0].reason == "invalid_line"
 
 
+def test_parse_global_user_table_explained_handles_bad_token_container():
+    """Test that a bad token container does not abort parsing."""
+    class BadTokens(list):
+        def __iter__(self):
+            raise RuntimeError("bad token iterator")
+
+    class BadTokenLine(str):
+        def strip(self, *args, **kwargs):
+            return self
+
+        def split(self, *args, **kwargs):
+            return BadTokens(["10.1.1.10", "aa:bb:cc:00:00:01", "user-a", "profiling"])
+
+    class BadOutput(str):
+        def splitlines(self, *args, **kwargs):
+            return [BadTokenLine("10.1.1.10 aa:bb:cc:00:00:01 user-a profiling")]
+
+    result = parse_global_user_table_explained(BadOutput(""), role_filter="profiling")
+
+    assert result.entries == []
+    assert len(result.decisions) == 1
+    assert result.decisions[0].action == "ignored"
+    assert result.decisions[0].reason == "invalid_line"
+
+
 def test_parse_global_user_table_explained_handles_bad_role_lookup_token():
     """Test that a bad token before the role column does not abort parsing."""
     class BadTokenLine(str):

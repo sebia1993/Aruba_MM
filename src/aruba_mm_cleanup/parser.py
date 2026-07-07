@@ -82,7 +82,11 @@ def parse_global_user_table_explained(output: str, *, role_filter: str = "profil
         except Exception:
             decisions.append(ParseDecision(line_number, "ignored", "invalid_line"))
             continue
-        mac_index, mac, mac_reason = _target_mac_from_tokens(tokens, role_filter=role)
+        try:
+            mac_index, mac, mac_reason = _target_mac_from_tokens(tokens, role_filter=role)
+        except Exception:
+            decisions.append(ParseDecision(line_number, "ignored", "invalid_line"))
+            continue
         try:
             user_type = _extract_type_value(line, type_spans)
         except Exception:
