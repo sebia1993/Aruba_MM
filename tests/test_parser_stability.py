@@ -197,6 +197,33 @@ def test_parse_global_user_table_explained_handles_bad_token_container():
     assert result.decisions[0].reason == "invalid_line"
 
 
+def test_parse_global_user_table_explained_handles_bad_role_match_container():
+    """Test that a bad token container during role matching does not abort parsing."""
+    class BadSliceTokens(list):
+        def __getitem__(self, key):
+            if isinstance(key, slice):
+                raise RuntimeError("bad token slice")
+            return super().__getitem__(key)
+
+    class BadTokenLine(str):
+        def strip(self, *args, **kwargs):
+            return self
+
+        def split(self, *args, **kwargs):
+            return BadSliceTokens(["10.1.1.10", "aa:bb:cc:00:00:01", "user-a"])
+
+    class BadOutput(str):
+        def splitlines(self, *args, **kwargs):
+            return [BadTokenLine("10.1.1.10 aa:bb:cc:00:00:01 user-a")]
+
+    result = parse_global_user_table_explained(BadOutput(""), role_filter="profiling")
+
+    assert result.entries == []
+    assert len(result.decisions) == 1
+    assert result.decisions[0].action == "ignored"
+    assert result.decisions[0].reason == "invalid_line"
+
+
 def test_parse_global_user_table_explained_handles_bad_role_lookup_token():
     """Test that a bad token before the role column does not abort parsing."""
     class BadTokenLine(str):

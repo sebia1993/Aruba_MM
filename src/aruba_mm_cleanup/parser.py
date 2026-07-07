@@ -98,7 +98,13 @@ def parse_global_user_table_explained(output: str, *, role_filter: str = "profil
         if not mac:
             decisions.append(ParseDecision(line_number, "ignored", mac_reason or "no_user_mac", user_type=user_type, type_na=type_na))
             continue
-        role_matches, role_reason = _row_matches_role(tokens, role, mac_index)
+        try:
+            role_matches, role_reason = _row_matches_role(tokens, role, mac_index)
+        except Exception:
+            decisions.append(
+                ParseDecision(line_number, "ignored", "invalid_line", mac=mac, user_type=user_type, type_na=type_na)
+            )
+            continue
         if role and not role_matches:
             # The command should already filter by role, but this avoids deleting
             # unrelated rows if a device echoes a broader table.
