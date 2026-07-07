@@ -1521,7 +1521,10 @@ class ArubaMmCleanupGui(tk.Tk):
             except Exception:
                 return default
 
-        output_dir = output_dir.expanduser()
+        try:
+            output_dir = output_dir.expanduser()
+        except Exception:
+            return
         if not force and self.loaded_history_dir == output_dir:
             return
         if not hasattr(self, "history_table"):
