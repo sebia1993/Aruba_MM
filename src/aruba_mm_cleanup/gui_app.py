@@ -1606,14 +1606,18 @@ class ArubaMmCleanupGui(tk.Tk):
             if not isinstance(audit, dict):
                 continue
             run_at = safe_text(safe_get(audit, "started_at", ""))
-            reappeared_macs = safe_get(audit, "reappeared_macs", []) or []
+            reappeared_macs = safe_get(audit, "reappeared_macs", [])
+            if reappeared_macs is None:
+                reappeared_macs = []
             if not isinstance(reappeared_macs, (list, tuple, set)):
                 reappeared_macs = []
             try:
                 reappeared = {mac for mac in reappeared_macs if isinstance(mac, str)}
             except Exception:
                 reappeared = set()
-            delete_results = safe_get(audit, "delete_results", []) or []
+            delete_results = safe_get(audit, "delete_results", [])
+            if delete_results is None:
+                delete_results = []
             if not isinstance(delete_results, (list, tuple)):
                 delete_results = []
             try:
