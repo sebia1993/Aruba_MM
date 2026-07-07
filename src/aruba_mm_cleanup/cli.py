@@ -73,7 +73,11 @@ def main(argv: Optional[list[str]] = None) -> int:
         elif event in {"query_done", "delete_done", "delete_error", "run_done", "run_error"}:
             print(f"{event}: {payload}")
 
-    summary = runner.run_once(config, settings, output_dir=args.output_dir.expanduser(), progress_callback=progress)
+    try:
+        summary = runner.run_once(config, settings, output_dir=args.output_dir.expanduser(), progress_callback=progress)
+    except Exception as exc:
+        print(f"Run error: {_exception_text(exc)}")
+        return 1
     queried_count = _summary_value(summary, "queried_count", 0)
     delete_success_count = _summary_value(summary, "delete_success_count", 0)
     delete_failure_count = _summary_value(summary, "delete_failure_count", 0)
@@ -101,6 +105,13 @@ def _summary_value(summary: object, name: str, default: object) -> object:
         return getattr(summary, name, default)
     except Exception:
         return default
+
+
+def _exception_text(exc: BaseException) -> str:
+    try:
+        return str(exc) or exc.__class__.__name__
+    except Exception:
+        return exc.__class__.__name__
 
 
 if __name__ == "__main__":

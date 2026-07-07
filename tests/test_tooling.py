@@ -837,6 +837,30 @@ def test_cli_handles_malformed_summary_without_attribute_error(monkeypatch, caps
     assert "Reappeared: 0" in output
 
 
+def test_cli_reports_unexpected_runner_failure(monkeypatch, capsys):
+    class FakeRunner:
+        def run_once(self, *_args, **_kwargs):
+            raise RuntimeError("runner exploded")
+
+    monkeypatch.setattr("aruba_mm_cleanup.cli.MmCleanupRunner", lambda: FakeRunner())
+
+    result = cli_main(
+        [
+            "--host",
+            "192.0.2.10",
+            "--username",
+            "admin",
+            "--password",
+            "secret",
+            "--yes",
+        ]
+    )
+
+    output = capsys.readouterr().out
+    assert result == 1
+    assert "Run error: runner exploded" in output
+
+
 def test_cli_expands_user_home_output_dir(monkeypatch):
     captured = {}
 
