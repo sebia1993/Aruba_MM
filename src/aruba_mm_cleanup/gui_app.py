@@ -1522,12 +1522,12 @@ class ArubaMmCleanupGui(tk.Tk):
             self.history_table.delete(*self.history_table.get_children())
         except Exception:
             return
-        self.loaded_history_dir = output_dir
-        self.history_row_counter = 0
         try:
             recent_records = records[-MAX_HISTORY_ROWS:]
         except Exception:
             return
+        self.loaded_history_dir = output_dir
+        self.history_row_counter = 0
         for record in recent_records:
             run_at = safe_text(safe_get(record, "run_at", ""))[:19].replace("T", " ")
             mac = safe_text(safe_get(record, "mac", ""))
