@@ -276,11 +276,14 @@ def _looks_like_device_mac_noise(tokens: list[str], mac_index: int) -> bool:
 
 def _extract_username(tokens: list[str], mac_index: int) -> str:
     for token in tokens[mac_index + 1 : mac_index + 5]:
-        if _IPV4_PATTERN.fullmatch(token):
-            continue
-        if normalize_mac(token):
-            continue
-        if token.casefold() in {"role", "vlan"}:
+        try:
+            if _IPV4_PATTERN.fullmatch(token):
+                continue
+            if normalize_mac(token):
+                continue
+            if token.casefold() in {"role", "vlan"}:
+                continue
+        except Exception:
             continue
         return token
     return ""

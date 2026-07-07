@@ -63,6 +63,16 @@ class BadToken(str):
         raise RuntimeError("bad token strip")
 
 
+class BadCasefoldToken(str):
+    """A token whose casefold() raises RuntimeError."""
+
+    def strip(self, *args, **kwargs):
+        return self
+
+    def casefold(self, *args, **kwargs):
+        raise RuntimeError("bad token casefold")
+
+
 def test_parse_global_user_table_explained_handles_bad_splitlines():
     """Test that parse_global_user_table_explained handles bad splitlines gracefully."""
     output = BadStr("some content")
@@ -194,3 +204,22 @@ def test_parse_global_user_table_explained_handles_bad_probable_role_token():
 
     assert [entry.mac for entry in result.entries] == ["aa:bb:cc:00:00:01"]
     assert result.entries[0].username == "user-a"
+
+
+def test_parse_global_user_table_explained_handles_bad_username_token():
+    """Test that a bad username token does not abort row parsing."""
+    class BadTokenLine(str):
+        def strip(self, *args, **kwargs):
+            return self
+
+        def split(self, *args, **kwargs):
+            return ["10.1.1.10", "aa:bb:cc:00:00:01", BadCasefoldToken("bad-user"), "profiling"]
+
+    class BadOutput(str):
+        def splitlines(self, *args, **kwargs):
+            return [BadTokenLine("10.1.1.10 aa:bb:cc:00:00:01 bad-user profiling")]
+
+    result = parse_global_user_table_explained(BadOutput(""), role_filter="profiling")
+
+    assert [entry.mac for entry in result.entries] == ["aa:bb:cc:00:00:01"]
+    assert result.decisions[-1].action == "selected"
