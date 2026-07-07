@@ -1303,6 +1303,25 @@ def test_delete_canceled_unexpected_button_failure_does_not_skip_log():
     assert "CANCELED: 2 pending MAC(s)" in app.logs
 
 
+def test_delete_canceled_unreadable_pending_rows_still_logs():
+    class UnreadableChildren:
+        def __iter__(self):
+            raise RuntimeError("pending rows unreadable")
+
+    class UnreadableChildrenTable(FakeTreeTable):
+        def get_children(self):
+            return UnreadableChildren()
+
+    app = make_headless_gui()
+    app.table = UnreadableChildrenTable()
+
+    ArubaMmCleanupGui._handle_progress(app, "delete_canceled", {"count": 2})
+
+    assert app.status_var.get() == "이번 삭제 취소됨"
+    assert app.timers[-1] == ("-", "대기")
+    assert "CANCELED: 2 pending MAC(s)" in app.logs
+
+
 def test_countdown_progress_handles_invalid_remaining_payload():
     app = make_headless_gui()
 

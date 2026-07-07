@@ -1270,7 +1270,11 @@ class ArubaMmCleanupGui(tk.Tk):
             item_ids = self.table.get_children()
         except Exception:
             return
-        for item_id in item_ids:
+        try:
+            item_ids_iter = iter(item_ids)
+        except Exception:
+            return
+        for item_id in item_ids_iter:
             try:
                 values = list(self.table.item(item_id, "values"))
             except TypeError:
