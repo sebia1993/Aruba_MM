@@ -50,7 +50,7 @@ def parse_global_user_table_explained(output: str, *, role_filter: str = "profil
     type_spans: list[tuple[int, int]] = []
     try:
         lines = output.splitlines()
-    except Exception:
+    except AttributeError:
         return ParseResult(entries=[], decisions=[ParseDecision(0, "ignored", "invalid_output")])
     for line_number, line in enumerate(lines, start=1):
         try:
