@@ -87,16 +87,16 @@ def main(argv: Optional[list[str]] = None) -> int:
     audit_error = _summary_value(summary, "audit_error", "")
     history_error = _summary_value(summary, "history_error", "")
     error = _summary_value(summary, "error", "summary unavailable")
-    print(f"Queried: {queried_count}")
-    print(f"Deleted: {delete_success_count}")
-    print(f"Failed: {delete_failure_count}")
-    print(f"Remaining: {remaining_count}")
-    print(f"Reappeared: {reappeared_count}")
-    print(f"Audit: {audit_path}")
+    print(f"Queried: {_safe_output_text(queried_count)}")
+    print(f"Deleted: {_safe_output_text(delete_success_count)}")
+    print(f"Failed: {_safe_output_text(delete_failure_count)}")
+    print(f"Remaining: {_safe_output_text(remaining_count)}")
+    print(f"Reappeared: {_safe_output_text(reappeared_count)}")
+    print(f"Audit: {_safe_output_text(audit_path)}")
     if audit_error:
-        print(f"Audit warning: {audit_error}")
+        print(f"Audit warning: {_safe_output_text(audit_error)}")
     if history_error:
-        print(f"History warning: {history_error}")
+        print(f"History warning: {_safe_output_text(history_error)}")
     return 1 if error or delete_failure_count or reappeared_count else 0
 
 
@@ -112,6 +112,13 @@ def _exception_text(exc: BaseException) -> str:
         return str(exc) or exc.__class__.__name__
     except Exception:
         return exc.__class__.__name__
+
+
+def _safe_output_text(value: object) -> str:
+    try:
+        return str(value)
+    except Exception:
+        return ""
 
 
 if __name__ == "__main__":

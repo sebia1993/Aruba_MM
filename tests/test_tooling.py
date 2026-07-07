@@ -861,6 +861,47 @@ def test_cli_reports_unexpected_runner_failure(monkeypatch, capsys):
     assert "Run error: runner exploded" in output
 
 
+def test_cli_handles_unprintable_summary_values(monkeypatch, capsys):
+    class BadText:
+        def __str__(self):
+            raise RuntimeError("bad text")
+
+        def __repr__(self):
+            raise RuntimeError("bad repr")
+
+    class FakeRunner:
+        def run_once(self, *_args, **_kwargs):
+            return SimpleNamespace(
+                queried_count=0,
+                delete_success_count=0,
+                delete_failure_count=0,
+                remaining_count=0,
+                reappeared_count=0,
+                audit_path=BadText(),
+                audit_error=BadText(),
+                history_error=BadText(),
+                error="",
+            )
+
+    monkeypatch.setattr("aruba_mm_cleanup.cli.MmCleanupRunner", lambda: FakeRunner())
+
+    result = cli_main(
+        [
+            "--host",
+            "192.0.2.10",
+            "--username",
+            "admin",
+            "--password",
+            "secret",
+            "--yes",
+        ]
+    )
+
+    output = capsys.readouterr().out
+    assert result == 0
+    assert "Audit:" in output
+
+
 def test_cli_expands_user_home_output_dir(monkeypatch):
     captured = {}
 
