@@ -69,9 +69,9 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     def progress(event: str, payload: dict[str, object]) -> None:
         if event == "countdown":
-            print(f"Delete countdown: {payload.get('remaining')}s")
+            print(f"Delete countdown: {_safe_output_text(_payload_value(payload, 'remaining', ''))}s")
         elif event in {"query_done", "delete_done", "delete_error", "run_done", "run_error"}:
-            print(f"{event}: {payload}")
+            print(f"{event}: {_safe_output_text(payload)}")
 
     try:
         summary = runner.run_once(config, settings, output_dir=args.output_dir.expanduser(), progress_callback=progress)
@@ -103,6 +103,19 @@ def main(argv: Optional[list[str]] = None) -> int:
 def _summary_value(summary: object, name: str, default: object) -> object:
     try:
         return getattr(summary, name, default)
+    except Exception:
+        return default
+
+
+def _payload_value(payload: object, name: str, default: object) -> object:
+    try:
+        getter = getattr(payload, "get", None)
+    except Exception:
+        return default
+    if not callable(getter):
+        return default
+    try:
+        return getter(name, default)
     except Exception:
         return default
 

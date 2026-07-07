@@ -943,6 +943,56 @@ def test_cli_handles_unreadable_summary_truthiness(monkeypatch, capsys):
     assert "Failed: bad-bool" in output
 
 
+def test_cli_handles_malformed_progress_payload(monkeypatch, capsys):
+    class BadPayload:
+        def get(self, *_args, **_kwargs):
+            raise RuntimeError("bad payload")
+
+    class BadText:
+        def __str__(self):
+            raise RuntimeError("bad progress text")
+
+        def __repr__(self):
+            raise RuntimeError("bad progress repr")
+
+    class FakeRunner:
+        def run_once(self, *_args, **kwargs):
+            progress_callback = kwargs["progress_callback"]
+            progress_callback("countdown", BadPayload())
+            progress_callback("query_done", BadText())
+            return SimpleNamespace(
+                queried_count=0,
+                delete_success_count=0,
+                delete_failure_count=0,
+                remaining_count=0,
+                reappeared_count=0,
+                audit_path=None,
+                audit_error="",
+                history_error="",
+                error="",
+            )
+
+    monkeypatch.setattr("aruba_mm_cleanup.cli.MmCleanupRunner", lambda: FakeRunner())
+
+    result = cli_main(
+        [
+            "--host",
+            "192.0.2.10",
+            "--username",
+            "admin",
+            "--password",
+            "secret",
+            "--yes",
+        ]
+    )
+
+    output = capsys.readouterr().out
+    assert result == 0
+    assert "Delete countdown:" in output
+    assert "query_done:" in output
+    assert "Queried: 0" in output
+
+
 def test_cli_expands_user_home_output_dir(monkeypatch):
     captured = {}
 
