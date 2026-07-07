@@ -1387,7 +1387,13 @@ class ArubaMmCleanupGui(tk.Tk):
                 return False
 
         delete_results = safe_get(summary, "delete_results", None)
-        if not isinstance(delete_results, (list, tuple)) or not delete_results:
+        if not isinstance(delete_results, (list, tuple)):
+            return
+        try:
+            has_delete_results = bool(delete_results)
+        except Exception:
+            return
+        if not has_delete_results:
             return
         started_at = safe_get(summary, "started_at", None)
         try:
