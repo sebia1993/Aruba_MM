@@ -1320,6 +1320,26 @@ def test_run_once_cancel_after_delete_treats_unreadable_success_as_failure(tmp_p
     assert summary.delete_failure_count == 1
 
 
+def test_count_delete_results_tolerates_unreadable_container():
+    class UnreadableDeleteResults(list):
+        def __iter__(self):
+            raise RuntimeError("bad delete result iterator")
+
+    results = UnreadableDeleteResults(
+        [
+            DeleteResult(
+                mac="aa:bb:cc:00:00:01",
+                success=True,
+                command="cmd",
+                status="deleted",
+                response_status="deleted",
+            )
+        ]
+    )
+
+    assert cleanup_module._count_delete_results(results) == (0, 0)
+
+
 def test_zero_query_writes_audit_without_delete(tmp_path):
     query_conn = FakeConnection(responses={"no paging": "", "show global-user-table list role profiling": ""})
     runner = MmCleanupRunner(

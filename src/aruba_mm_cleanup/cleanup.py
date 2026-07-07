@@ -791,10 +791,10 @@ def _delete_result_success(item: object) -> bool:
         return False
 
 
-def _count_delete_results(results: list[object]) -> tuple[int, int]:
+def _count_delete_results(results: object) -> tuple[int, int]:
     success_count = 0
     failure_count = 0
-    for item in results:
+    for item in _safe_list_items(results):
         if _delete_result_success(item):
             success_count += 1
         else:
