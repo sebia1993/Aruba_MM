@@ -73,6 +73,10 @@ class BadCasefoldToken(str):
         raise RuntimeError("bad token casefold")
 
 
+class NonStringToken:
+    """A token that cannot be passed to regex string matchers."""
+
+
 def test_parse_global_user_table_explained_handles_bad_splitlines():
     """Test that parse_global_user_table_explained handles bad splitlines gracefully."""
     output = BadStr("some content")
@@ -223,3 +227,22 @@ def test_parse_global_user_table_explained_handles_bad_username_token():
 
     assert [entry.mac for entry in result.entries] == ["aa:bb:cc:00:00:01"]
     assert result.decisions[-1].action == "selected"
+
+
+def test_parse_global_user_table_explained_handles_bad_ip_lookup_token():
+    """Test that a bad token before an IP address does not abort row parsing."""
+    class BadTokenLine(str):
+        def strip(self, *args, **kwargs):
+            return self
+
+        def split(self, *args, **kwargs):
+            return [NonStringToken(), "10.1.1.10", "aa:bb:cc:00:00:01", "user-a", "profiling"]
+
+    class BadOutput(str):
+        def splitlines(self, *args, **kwargs):
+            return [BadTokenLine("bad 10.1.1.10 aa:bb:cc:00:00:01 user-a profiling")]
+
+    result = parse_global_user_table_explained(BadOutput(""), role_filter="profiling")
+
+    assert [entry.mac for entry in result.entries] == ["aa:bb:cc:00:00:01"]
+    assert result.entries[0].ip_address == "10.1.1.10"

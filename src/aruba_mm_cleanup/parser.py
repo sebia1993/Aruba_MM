@@ -291,8 +291,11 @@ def _extract_username(tokens: list[str], mac_index: int) -> str:
 
 def _extract_ip(tokens: list[str]) -> str:
     for token in tokens[:6]:
-        if _IPV4_PATTERN.fullmatch(token):
-            return token
+        try:
+            if _IPV4_PATTERN.fullmatch(token):
+                return token
+        except Exception:
+            continue
     return ""
 
 
