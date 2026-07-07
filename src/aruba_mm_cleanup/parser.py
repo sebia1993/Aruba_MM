@@ -241,10 +241,19 @@ def _probable_role_token(tokens: list[str], mac_index: int) -> str:
         return ""
     if normalize_mac(tokens[candidate_index - 1]):
         return ""
-    token = tokens[candidate_index].strip()
-    if not token or token.isdigit() or normalize_mac(token) or _IPV4_PATTERN.fullmatch(token):
+    try:
+        token = tokens[candidate_index].strip()
+    except Exception:
         return ""
-    if token.casefold() in {"role", "vlan", "bssid", "ap", "essid"}:
+    try:
+        if not token or token.isdigit() or normalize_mac(token) or _IPV4_PATTERN.fullmatch(token):
+            return ""
+    except Exception:
+        return ""
+    try:
+        if token.casefold() in {"role", "vlan", "bssid", "ap", "essid"}:
+            return ""
+    except Exception:
         return ""
     return token
 

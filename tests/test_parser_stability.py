@@ -175,3 +175,22 @@ def test_parse_global_user_table_explained_handles_bad_role_lookup_token():
 
     assert [entry.mac for entry in result.entries] == ["aa:bb:cc:00:00:01"]
     assert result.decisions[-1].action == "selected"
+
+
+def test_parse_global_user_table_explained_handles_bad_probable_role_token():
+    """Test that a bad probable role token does not abort parsing."""
+    class BadTokenLine(str):
+        def strip(self, *args, **kwargs):
+            return self
+
+        def split(self, *args, **kwargs):
+            return ["10.1.1.10", "aa:bb:cc:00:00:01", "user-a", BadToken("profiling")]
+
+    class BadOutput(str):
+        def splitlines(self, *args, **kwargs):
+            return [BadTokenLine("10.1.1.10 aa:bb:cc:00:00:01 user-a profiling")]
+
+    result = parse_global_user_table_explained(BadOutput(""), role_filter="profiling")
+
+    assert [entry.mac for entry in result.entries] == ["aa:bb:cc:00:00:01"]
+    assert result.entries[0].username == "user-a"
