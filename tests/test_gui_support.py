@@ -1832,6 +1832,23 @@ def test_history_cap_ignores_unexpected_children_failure():
     assert app.history_table.rows == {}
 
 
+def test_history_cap_ignores_unreadable_children_length():
+    class UnreadableChildren:
+        def __len__(self):
+            raise RuntimeError("bad history children length")
+
+    class UnreadableChildrenHistoryTable(FakeHistoryTable):
+        def get_children(self):
+            return UnreadableChildren()
+
+    app = make_headless_gui()
+    app.history_table = UnreadableChildrenHistoryTable()
+
+    ArubaMmCleanupGui._cap_history_rows(app)
+
+    assert app.history_table.rows == {}
+
+
 def test_history_cap_ignores_unexpected_delete_failure():
     app = make_headless_gui()
     app.history_table = UnexpectedCapDeleteFailingHistoryTable()
