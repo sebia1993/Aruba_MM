@@ -1250,7 +1250,7 @@ class ArubaMmCleanupGui(tk.Tk):
             try:
                 exists = self.table.exists(mac)
             except Exception:
-                return
+                continue
             if exists:
                 self._set_row_status(mac, "재조회됨", error)
             else:
@@ -1263,7 +1263,7 @@ class ArubaMmCleanupGui(tk.Tk):
                         tags=("reappeared",),
                     )
                 except Exception:
-                    return
+                    continue
 
     def _set_all_pending_status(self, status: str) -> None:
         try:

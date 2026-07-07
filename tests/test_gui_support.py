@@ -1768,6 +1768,30 @@ def test_mark_reappeared_rows_ignores_unexpected_insert_failure():
     assert app.table.rows == {}
 
 
+def test_mark_reappeared_rows_continues_after_per_row_table_failures():
+    class PartiallyFailingReappearedTable(FakeTreeTable):
+        def exists(self, item):
+            if item == "aa:bb:cc:00:00:01":
+                raise RuntimeError("table exists failed")
+            return super().exists(item)
+
+        def insert(self, _parent, _index, iid, values, tags=()):
+            if iid == "aa:bb:cc:00:00:02":
+                raise RuntimeError("table insert failed")
+            return super().insert(_parent, _index, iid, values, tags=tags)
+
+    app = make_headless_gui()
+    app.table = PartiallyFailingReappearedTable()
+
+    ArubaMmCleanupGui._mark_reappeared_rows(
+        app,
+        ["aa:bb:cc:00:00:01", "aa:bb:cc:00:00:02", "aa:bb:cc:00:00:03"],
+    )
+
+    assert app.table.get_children() == ("aa:bb:cc:00:00:03",)
+    assert app.table.rows["aa:bb:cc:00:00:03"]["tags"] == ("reappeared",)
+
+
 def test_history_cap_ignores_destroyed_history_table():
     app = make_headless_gui()
     app.history_table = DestroyedHistoryTable()
