@@ -1524,7 +1524,11 @@ class ArubaMmCleanupGui(tk.Tk):
             return
         self.loaded_history_dir = output_dir
         self.history_row_counter = 0
-        for record in records[-MAX_HISTORY_ROWS:]:
+        try:
+            recent_records = records[-MAX_HISTORY_ROWS:]
+        except Exception:
+            return
+        for record in recent_records:
             run_at = safe_text(safe_get(record, "run_at", ""))[:19].replace("T", " ")
             mac = safe_text(safe_get(record, "mac", ""))
             if not mac:

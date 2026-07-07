@@ -3017,6 +3017,28 @@ def test_history_load_retries_same_directory_after_read_failure(tmp_path):
     assert rows == [("2026-07-02 13:00:00", "aa:bb:cc:00:00:01", "삭제 실패", "")]
 
 
+def test_history_load_ignores_unreadable_records_container(tmp_path):
+    class UnreadableRecords(list):
+        def __getitem__(self, key):
+            if isinstance(key, slice):
+                raise RuntimeError("bad history records slice")
+            return super().__getitem__(key)
+
+    output_dir = tmp_path / "outputs"
+    output_dir.mkdir()
+    app = make_headless_gui()
+    app.history_table = FakeHistoryTable()
+    app.history_row_counter = 0
+    app.loaded_history_dir = None
+    app._read_history_records = lambda _output_dir: UnreadableRecords(
+        [{"run_at": "2026-07-02T13:00:00", "mac": "aa:bb:cc:00:00:01"}]
+    )
+
+    app._load_history_from_output_dir(output_dir)
+
+    assert app.history_table.get_children() == ()
+
+
 def test_history_load_ignores_unexpected_history_table_delete_failure(tmp_path):
     output_dir = tmp_path / "outputs"
     output_dir.mkdir()
