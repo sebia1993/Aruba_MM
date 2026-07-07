@@ -3975,6 +3975,20 @@ def test_log_keeps_message_when_line_index_is_unexpected():
     assert app.log_text.state == "disabled"
 
 
+def test_cap_log_lines_ignores_unexpected_index_failure():
+    class UnexpectedIndexFailingLogText(FakeLogText):
+        def index(self, _index):
+            raise RuntimeError("log index failed")
+
+    app = make_headless_gui()
+    app.log_text = UnexpectedIndexFailingLogText()
+    app.log_text.lines = [f"line {index}" for index in range(MAX_LOG_LINES + 1)]
+
+    ArubaMmCleanupGui._cap_log_lines(app)
+
+    assert len(app.log_text.lines) == MAX_LOG_LINES + 1
+
+
 def test_log_stays_disabled_when_cap_delete_fails():
     app = make_headless_gui()
     app.log_text = DeleteFailingLogText()

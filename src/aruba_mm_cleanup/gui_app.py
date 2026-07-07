@@ -1469,7 +1469,7 @@ class ArubaMmCleanupGui(tk.Tk):
     def _cap_log_lines(self) -> None:
         try:
             line_count = int(self.log_text.index("end-1c").split(".")[0])
-        except (tk.TclError, TypeError, ValueError):
+        except Exception:
             return
         overflow = line_count - MAX_LOG_LINES
         if overflow > 0:
