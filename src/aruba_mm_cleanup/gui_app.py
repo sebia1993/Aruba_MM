@@ -1112,7 +1112,9 @@ class ArubaMmCleanupGui(tk.Tk):
             except Exception:
                 pass
             self._set_all_pending_status("취소됨")
-            self._log(f"CANCELED: {payload.get('count')} pending MAC(s)")
+            raw_count = payload.get("count")
+            count = "None" if raw_count is None else (_safe_text(raw_count) or raw_count.__class__.__name__)
+            self._log(f"CANCELED: {count} pending MAC(s)")
         elif event == "run_error":
             try:
                 self.status_var.set("실패")
