@@ -3039,6 +3039,42 @@ def test_history_load_ignores_unreadable_records_container(tmp_path):
     assert app.history_table.get_children() == ()
 
 
+def test_history_load_preserves_existing_rows_when_records_slice_fails(tmp_path):
+    class UnreadableRecords(list):
+        def __getitem__(self, key):
+            if isinstance(key, slice):
+                raise RuntimeError("bad history records slice")
+            return super().__getitem__(key)
+
+    output_dir = tmp_path / "outputs"
+    output_dir.mkdir()
+    app = make_headless_gui()
+    app.history_table = FakeHistoryTable()
+    app.history_table.insert(
+        "",
+        "end",
+        iid="history-0",
+        values=("old-run", "old-mac", "old-result", ""),
+    )
+    app.history_row_counter = 1
+    app.loaded_history_dir = None
+    app._read_history_records = lambda _output_dir: UnreadableRecords(
+        [{"run_at": "2026-07-02T13:00:00", "mac": "aa:bb:cc:00:00:01"}]
+    )
+
+    app._load_history_from_output_dir(output_dir)
+
+    assert app.history_table.get_children() == ("history-0",)
+    assert app.history_table.rows["history-0"]["values"] == (
+        "old-run",
+        "old-mac",
+        "old-result",
+        "",
+    )
+    assert app.history_row_counter == 1
+    assert app.loaded_history_dir is None
+
+
 def test_history_load_retries_same_directory_after_records_slice_failure(tmp_path):
     class UnreadableRecords(list):
         def __getitem__(self, key):

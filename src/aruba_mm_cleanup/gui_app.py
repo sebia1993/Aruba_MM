@@ -1519,11 +1519,11 @@ class ArubaMmCleanupGui(tk.Tk):
         except Exception:
             return
         try:
-            self.history_table.delete(*self.history_table.get_children())
+            recent_records = records[-MAX_HISTORY_ROWS:]
         except Exception:
             return
         try:
-            recent_records = records[-MAX_HISTORY_ROWS:]
+            self.history_table.delete(*self.history_table.get_children())
         except Exception:
             return
         self.loaded_history_dir = output_dir
