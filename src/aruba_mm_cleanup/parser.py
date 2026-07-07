@@ -133,11 +133,23 @@ def parse_global_user_table_explained(output: str, *, role_filter: str = "profil
                 )
             )
             continue
+        try:
+            entry_role = _extract_role(tokens, role)
+        except Exception:
+            entry_role = role
+        try:
+            username = _extract_username(tokens, mac_index)
+        except Exception:
+            username = ""
+        try:
+            ip_address = _extract_ip(tokens)
+        except Exception:
+            ip_address = ""
         entry = UserEntry(
             mac=mac,
-            role=_extract_role(tokens, role),
-            username=_extract_username(tokens, mac_index),
-            ip_address=_extract_ip(tokens),
+            role=entry_role,
+            username=username,
+            ip_address=ip_address,
             user_type=user_type,
             type_na=type_na,
         )

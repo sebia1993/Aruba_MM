@@ -281,6 +281,34 @@ def test_parse_global_user_table_explained_handles_bad_username_token():
     assert result.decisions[-1].action == "selected"
 
 
+def test_parse_global_user_table_explained_handles_bad_entry_detail_container():
+    """Test that bad detail extraction does not abort a selected row."""
+    class BadSliceTokens(list):
+        def __getitem__(self, key):
+            if isinstance(key, slice):
+                raise RuntimeError("bad token slice")
+            return super().__getitem__(key)
+
+    class BadTokenLine(str):
+        def strip(self, *args, **kwargs):
+            return self
+
+        def split(self, *args, **kwargs):
+            return BadSliceTokens(["10.1.1.10", "aa:bb:cc:00:00:01", "user-a", "profiling"])
+
+    class BadOutput(str):
+        def splitlines(self, *args, **kwargs):
+            return [BadTokenLine("10.1.1.10 aa:bb:cc:00:00:01 user-a profiling")]
+
+    result = parse_global_user_table_explained(BadOutput(""), role_filter="profiling")
+
+    assert [entry.mac for entry in result.entries] == ["aa:bb:cc:00:00:01"]
+    assert result.entries[0].role == "profiling"
+    assert result.entries[0].username == ""
+    assert result.entries[0].ip_address == ""
+    assert result.decisions[-1].action == "selected"
+
+
 def test_parse_global_user_table_explained_handles_bad_ip_lookup_token():
     """Test that a bad token before an IP address does not abort row parsing."""
     class BadTokenLine(str):
