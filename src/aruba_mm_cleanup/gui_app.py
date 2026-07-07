@@ -1212,7 +1212,7 @@ class ArubaMmCleanupGui(tk.Tk):
         except Exception:
             return
         now = time.strftime("%Y-%m-%d %H:%M:%S")
-        type_na_set = set(_unique_display_macs(type_na_macs or []))
+        type_na_set = set(_unique_display_macs([] if type_na_macs is None else type_na_macs))
         for mac in _unique_display_macs(macs):
             message = TYPE_NA_MESSAGE if mac in type_na_set else ""
             try:

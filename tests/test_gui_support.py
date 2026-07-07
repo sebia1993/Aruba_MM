@@ -1445,6 +1445,25 @@ def test_replace_table_tolerates_unreadable_display_mac_container():
     assert app.table.get_children() == ()
 
 
+def test_replace_table_tolerates_unreadable_type_na_container():
+    class UnreadableLengthMacs(list):
+        def __len__(self):
+            raise RuntimeError("bad type n/a macs length")
+
+    app = make_headless_gui()
+    app.table = FakeTreeTable()
+
+    ArubaMmCleanupGui._replace_table(
+        app,
+        ["aa:bb:cc:00:00:01"],
+        "삭제 대상",
+        type_na_macs=UnreadableLengthMacs(["aa:bb:cc:00:00:01"]),
+    )
+
+    assert app.table.get_children() == ("aa:bb:cc:00:00:01",)
+    assert app.table.rows["aa:bb:cc:00:00:01"]["values"][4] == TYPE_NA_MESSAGE
+
+
 def test_query_done_ignores_non_string_mac_items_without_table_rows():
     app = make_headless_gui()
     app.table = FakeTreeTable()
