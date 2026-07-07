@@ -204,6 +204,22 @@ def test_build_query_command_rejects_unstrippable_role_without_runtime_error():
         raise AssertionError("build_query_command should reject unstrippable role values")
 
 
+def test_build_query_command_rejects_uniterable_role_without_runtime_error():
+    class BadRole(str):
+        def strip(self, *_args, **_kwargs):
+            return self
+
+        def __iter__(self):
+            raise RuntimeError("bad iter")
+
+    try:
+        build_query_command(BadRole("profiling"))  # type: ignore[arg-type]
+    except ValueError as exc:
+        assert "Role" in str(exc)
+    else:
+        raise AssertionError("build_query_command should reject uniterable role values")
+
+
 def test_build_query_command_rejects_missing_role_without_attribute_error():
     try:
         build_query_command(None)  # type: ignore[arg-type]

@@ -41,7 +41,11 @@ def build_query_command(role: str) -> str:
         role_value = role.strip() or "profiling"
     except Exception as exc:
         raise ValueError("Role이 올바르지 않습니다.") from exc
-    if _has_control_character(role_value):
+    try:
+        has_control_character = _has_control_character(role_value)
+    except Exception as exc:
+        raise ValueError("Role이 올바르지 않습니다.") from exc
+    if has_control_character:
         raise ValueError("Role에는 제어 문자를 사용할 수 없습니다.")
     return f"show global-user-table list role {role_value}"
 
