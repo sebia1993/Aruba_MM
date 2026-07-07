@@ -32,7 +32,7 @@ def parse_global_user_table(output: str, *, role_filter: str = "profiling") -> l
     return parse_global_user_table_explained(output, role_filter=role_filter).entries
 
 
-def parse_global_user_table_explained(output: str, *, role_filter: str = "profiling") -> ParseResult:
+def parse_global_user_table_explained(output: str | None, *, role_filter: str = "profiling") -> ParseResult:
     """Extract target user MACs from `show global-user-table list role ...`.
 
     Aruba user-table output often contains other MAC-looking fields such as
