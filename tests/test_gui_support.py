@@ -3593,6 +3593,33 @@ def test_history_read_skips_runtime_error_jsonl_record(tmp_path, monkeypatch):
     assert loaded == [{"run_at": "2026-07-02T13:00:00", "mac": "aa:bb:cc:00:00:01"}]
 
 
+def test_history_read_skips_unicode_error_jsonl_record(tmp_path, monkeypatch):
+    output_dir = tmp_path / "outputs"
+    output_dir.mkdir()
+    (output_dir / HISTORY_FILE_NAME).write_text(
+        "\n".join(
+            [
+                "bad-unicode-json",
+                json.dumps({"run_at": "2026-07-02T13:00:00", "mac": "aa:bb:cc:00:00:01"}),
+            ]
+        ),
+        encoding="utf-8",
+    )
+    original_loads = json.loads
+
+    def fake_loads(payload):
+        if payload.strip() == "bad-unicode-json":
+            raise UnicodeError("bad unicode record")
+        return original_loads(payload)
+
+    monkeypatch.setattr(gui_app_module.json, "loads", fake_loads)
+    app = make_headless_gui()
+
+    loaded = app._read_history_records(output_dir)
+
+    assert loaded == [{"run_at": "2026-07-02T13:00:00", "mac": "aa:bb:cc:00:00:01"}]
+
+
 def test_history_read_skips_jsonl_record_when_mac_access_fails(tmp_path, monkeypatch):
     class FailingMacRecord(dict):
         def get(self, key, default=None):

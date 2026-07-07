@@ -1573,7 +1573,7 @@ class ArubaMmCleanupGui(tk.Tk):
                     for line in handle:
                         try:
                             record = json.loads(line)
-                        except (json.JSONDecodeError, RecursionError, RuntimeError):
+                        except (json.JSONDecodeError, RecursionError, RuntimeError, UnicodeError):
                             continue
                         mac = safe_get(record, "mac", "") if isinstance(record, dict) else ""
                         if isinstance(record, dict) and isinstance(mac, str) and mac:
