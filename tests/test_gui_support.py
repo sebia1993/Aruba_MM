@@ -1409,6 +1409,23 @@ def test_query_done_ignores_unreadable_mac_payloads_without_stopping_log():
     assert "QUERY DONE: 1 MAC(s)" in app.logs
 
 
+def test_replace_table_tolerates_unreadable_display_mac_container():
+    class UnreadableMacs(list):
+        def __iter__(self):
+            raise RuntimeError("bad macs")
+
+    app = make_headless_gui()
+    app.table = FakeTreeTable()
+
+    ArubaMmCleanupGui._replace_table(
+        app,
+        UnreadableMacs(["aa:bb:cc:00:00:01"]),
+        "삭제 대상",
+    )
+
+    assert app.table.get_children() == ()
+
+
 def test_query_done_ignores_non_string_mac_items_without_table_rows():
     app = make_headless_gui()
     app.table = FakeTreeTable()

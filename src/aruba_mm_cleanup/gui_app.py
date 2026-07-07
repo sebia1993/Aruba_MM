@@ -1751,10 +1751,20 @@ class ArubaMmCleanupGui(tk.Tk):
             pass
 
 
-def _unique_display_macs(macs: list[str]) -> list[str]:
+def _unique_display_macs(macs: object) -> list[str]:
+    try:
+        macs_iter = iter(macs)  # type: ignore[arg-type]
+    except Exception:
+        return []
     seen: set[str] = set()
     unique: list[str] = []
-    for mac in macs:
+    while True:
+        try:
+            mac = next(macs_iter)
+        except StopIteration:
+            break
+        except Exception:
+            break
         if not isinstance(mac, str):
             continue
         try:
