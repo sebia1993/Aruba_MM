@@ -309,6 +309,37 @@ def test_parse_global_user_table_explained_handles_bad_entry_detail_container():
     assert result.decisions[-1].action == "selected"
 
 
+def test_parse_global_user_table_explained_handles_bad_duplicate_role_token():
+    """Test that duplicate row decision logging does not abort on bad role access."""
+    class BadRoleAccessTokens(list):
+        def __getitem__(self, key):
+            if key == 3:
+                raise RuntimeError("bad role access")
+            return super().__getitem__(key)
+
+    class DuplicateBadTokenLine(str):
+        def strip(self, *args, **kwargs):
+            return self
+
+        def split(self, *args, **kwargs):
+            return BadRoleAccessTokens(["10.1.1.11", "aa:bb:cc:00:00:01", "user-b", "profiling"])
+
+    class BadOutput(str):
+        def splitlines(self, *args, **kwargs):
+            return [
+                "10.1.1.10 aa:bb:cc:00:00:01 user-a profiling",
+                DuplicateBadTokenLine("10.1.1.11 aa:bb:cc:00:00:01 user-b profiling"),
+            ]
+
+    result = parse_global_user_table_explained(BadOutput(""), role_filter="profiling")
+
+    assert [entry.mac for entry in result.entries] == ["aa:bb:cc:00:00:01"]
+    duplicate = result.decisions[-1]
+    assert duplicate.action == "ignored"
+    assert duplicate.reason == "duplicate_user_mac"
+    assert duplicate.role == "profiling"
+
+
 def test_parse_global_user_table_explained_handles_bad_ip_lookup_token():
     """Test that a bad token before an IP address does not abort row parsing."""
     class BadTokenLine(str):

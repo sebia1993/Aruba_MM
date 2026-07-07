@@ -121,13 +121,17 @@ def parse_global_user_table_explained(output: str, *, role_filter: str = "profil
             )
             continue
         if mac in entries:
+            try:
+                duplicate_role = _extract_role(tokens, role)
+            except Exception:
+                duplicate_role = role
             decisions.append(
                 ParseDecision(
                     line_number,
                     "ignored",
                     "duplicate_user_mac",
                     mac=mac,
-                    role=_extract_role(tokens, role),
+                    role=duplicate_role,
                     user_type=user_type,
                     type_na=type_na,
                 )
