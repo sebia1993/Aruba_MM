@@ -108,13 +108,17 @@ def parse_global_user_table_explained(output: str, *, role_filter: str = "profil
         if role and not role_matches:
             # The command should already filter by role, but this avoids deleting
             # unrelated rows if a device echoes a broader table.
+            try:
+                ignored_role = _probable_role_token(tokens, mac_index) or _extract_role(tokens, role)
+            except Exception:
+                ignored_role = role
             decisions.append(
                 ParseDecision(
                     line_number,
                     "ignored",
                     role_reason,
                     mac=mac,
-                    role=_probable_role_token(tokens, mac_index) or _extract_role(tokens, role),
+                    role=ignored_role,
                     user_type=user_type,
                     type_na=type_na,
                 )

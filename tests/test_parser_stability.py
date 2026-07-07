@@ -340,6 +340,40 @@ def test_parse_global_user_table_explained_handles_bad_duplicate_role_token():
     assert duplicate.role == "profiling"
 
 
+def test_parse_global_user_table_explained_handles_bad_unmatched_role_metadata():
+    """Test that unmatched-role decision logging does not abort on bad role metadata access."""
+    class BadRoleMetadataTokens(list):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.iter_calls = 0
+
+        def __iter__(self):
+            self.iter_calls += 1
+            if self.iter_calls > 3:
+                raise RuntimeError("bad role metadata iterator")
+            return super().__iter__()
+
+    class RoleMismatchLine(str):
+        def strip(self, *args, **kwargs):
+            return self
+
+        def split(self, *args, **kwargs):
+            return BadRoleMetadataTokens(["aa:bb:cc:00:00:01"])
+
+    class BadOutput(str):
+        def splitlines(self, *args, **kwargs):
+            return [RoleMismatchLine("aa:bb:cc:00:00:01")]
+
+    result = parse_global_user_table_explained(BadOutput(""), role_filter="profiling")
+
+    assert result.entries == []
+    decision = result.decisions[-1]
+    assert decision.action == "ignored"
+    assert decision.reason == "role_not_found"
+    assert decision.mac == "aa:bb:cc:00:00:01"
+    assert decision.role == "profiling"
+
+
 def test_parse_global_user_table_explained_handles_bad_ip_lookup_token():
     """Test that a bad token before an IP address does not abort row parsing."""
     class BadTokenLine(str):
