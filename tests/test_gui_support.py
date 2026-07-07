@@ -1718,6 +1718,28 @@ def test_set_all_pending_status_ignores_unexpected_item_update_failure():
     assert app.table.rows["aa:bb:cc:00:00:01"]["values"][1] == "삭제 대상"
 
 
+def test_set_all_pending_status_continues_after_per_row_table_failures():
+    class PartiallyFailingPendingTable(FakeTreeTable):
+        def item(self, item, option=None, **kwargs):
+            if item == "bad-read":
+                raise RuntimeError("table read failed")
+            if item == "bad-update" and kwargs:
+                raise RuntimeError("table update failed")
+            return super().item(item, option, **kwargs)
+
+    app = make_headless_gui()
+    app.table = PartiallyFailingPendingTable()
+    app.table.insert("", "end", iid="bad-read", values=("bad-read", "삭제 대상", "", "", ""))
+    app.table.insert("", "end", iid="bad-update", values=("bad-update", "삭제 대상", "", "", ""))
+    app.table.insert("", "end", iid="good-row", values=("good-row", "삭제 중", "", "", ""))
+
+    ArubaMmCleanupGui._set_all_pending_status(app, "취소됨")
+
+    assert app.table.rows["bad-read"]["values"][1] == "삭제 대상"
+    assert app.table.rows["bad-update"]["values"][1] == "삭제 대상"
+    assert app.table.rows["good-row"]["values"][1] == "취소됨"
+
+
 def test_result_table_updates_ignore_destroyed_table():
     app = make_headless_gui()
     app.table = DestroyedTreeTable()

@@ -1276,7 +1276,7 @@ class ArubaMmCleanupGui(tk.Tk):
             except TypeError:
                 continue
             except Exception:
-                return
+                continue
             if len(values) < 2:
                 continue
             try:
@@ -1288,7 +1288,7 @@ class ArubaMmCleanupGui(tk.Tk):
                 try:
                     self.table.item(item_id, values=values)
                 except Exception:
-                    return
+                    continue
 
     def _set_running(self, running: bool) -> None:
         self.is_running = running
