@@ -1,26 +1,60 @@
 # Aruba_MM
 
-Aruba MM Cleanup은 Aruba Mobility Master/MM에서 `profiling` Role 사용자 MAC을 조회하고, 조회 직후 자동으로 `aaa user delete mac <mac>`을 실행하는 Windows 11 운영 대시보드입니다.
+Aruba MM Cleanup은 Aruba Mobility Master/MM에서 `profiling` Role 사용자 MAC을 조회하고, 조회 직후 자동으로 `aaa user delete mac <mac>`을 실행하는 Windows 11 운영 도구입니다. 최종 사용자용 배포 ZIP은 GUI와 웹앱 실행 경로를 함께 제공합니다.
 
 ## Windows 11 사용 방법
 
-1. GitHub Release에서 `aruba-mm-cleanup_vYYYY.MM.DD-HHMMSS_windows.zip` 파일을 다운로드합니다.
+1. GitHub Release에서 `aruba-mm-cleanup_vYYYY.MM.DD-HHMMSS_windows.zip` 파일 하나만 다운로드합니다.
 2. ZIP 파일 압축을 풉니다.
-3. `ArubaMMCleanupGUI.exe`를 실행합니다.
-4. CLI가 필요하면 같은 폴더의 `ArubaMMCleanupCLI.exe`를 사용합니다.
-5. MM IP, 계정, 암호, Role을 입력합니다. Role 기본값은 `profiling`입니다.
-6. `장비 응답 대기(초)`는 SSH 접속, 인증, 명령 응답을 기다리는 시간입니다.
-7. `1회 실행`을 누르면 조회 후 즉시 삭제 단계로 진행합니다.
-8. 주기적으로 반복하려면 `주기(초)`를 설정하고 `주기 실행 시작`을 누릅니다. `1`을 입력하면 다음 실행 대기도 1초로 적용됩니다.
-9. 장비 세션을 즉시 끊고 싶으면 `세션 연결 해제`를 누릅니다.
+3. GUI로 실행하려면 `gui\ArubaMMCleanupGUI.exe`를 실행합니다.
+4. 웹앱으로 실행하려면 `web\start_webapp.cmd`를 더블클릭합니다.
+5. GitHub가 자동으로 표시하는 `Source code (zip)` / `Source code (tar.gz)`는 소스 아카이브이며 일반 사용자가 실행할 파일이 아닙니다.
+
+## 통합 ZIP 구조
+
+```text
+README_START_HERE_KO.txt
+gui/
+  ArubaMMCleanupGUI.exe
+  USER_GUIDE_KO.md
+  config/mock_scenarios/profiling_users.txt
+web/
+  ArubaMMCleanupWeb.exe
+  start_webapp.cmd
+  config/mock_scenarios/profiling_users.txt
+```
+
+- 최종 Release ZIP에는 일반 사용자용 GUI와 웹앱만 포함합니다.
+- 웹앱은 PyInstaller로 빌드한 portable 실행 파일을 사용하므로 Windows 사용자가 Python/런타임을 별도로 설치하지 않아도 됩니다.
+- CLI 코드는 저장소에 유지하지만 최종 사용자용 Release ZIP에는 포함하지 않습니다.
+- SHA256 checksum은 별도 파일로 올리지 않고 GitHub Release notes 본문에 기록합니다.
+
+## GUI 사용 방법
+
+1. `gui\ArubaMMCleanupGUI.exe`를 실행합니다.
+2. MM IP, 계정, 암호, Role을 입력합니다. Role 기본값은 `profiling`입니다.
+3. `장비 응답 대기(초)`는 SSH 접속, 인증, 명령 응답을 기다리는 시간입니다.
+4. `1회 실행`을 누르면 조회 후 즉시 삭제 단계로 진행합니다.
+5. 주기적으로 반복하려면 `주기(초)`를 설정하고 `주기 실행 시작`을 누릅니다. `1`을 입력하면 다음 실행 대기도 1초로 적용됩니다.
+6. 장비 세션을 즉시 끊고 싶으면 `세션 연결 해제`를 누릅니다.
+
+## 웹앱 사용 방법
+
+1. `web\start_webapp.cmd`를 더블클릭합니다.
+2. 브라우저가 열리면 MM IP, 계정, 암호, Role을 입력합니다.
+3. `1회 실행`을 누르면 조회 후 즉시 삭제 단계로 진행합니다.
+4. 기본 주소는 `127.0.0.1`, 기본 포트는 `8765`입니다.
+5. 포트를 바꾸려면 명령 프롬프트에서 `web` 폴더로 이동한 뒤 `start_webapp.cmd --port 9876`처럼 실행합니다.
+6. 브라우저 자동 열기를 막으려면 `start_webapp.cmd --no-browser`를 사용합니다.
+7. smoke 검증은 `start_webapp.cmd --smoke`로 실행합니다.
 
 ## 동작 흐름
 
 - 조회 명령: `show global-user-table list role <role>`
 - 삭제 명령: `aaa user delete mac <mac>`
 - 삭제 대상은 조회 snapshot에서 파싱된 사용자 MAC만 사용합니다.
-- GUI는 조회 완료 후 즉시 삭제를 시작합니다. CLI만 `--delay`로 삭제 전 대기 시간을 조절할 수 있습니다.
-- 장비 응답 대기 시간은 GUI의 `장비 응답 대기(초)` 또는 CLI의 `--timeout`으로 조절합니다.
+- GUI와 웹앱은 조회 완료 후 즉시 삭제를 시작합니다.
+- 장비 응답 대기 시간은 `장비 응답 대기(초)` 입력값으로 조절합니다.
 - 같은 MAC이 여러 줄에서 발견되어도 정규화된 MAC 기준으로 삭제 명령은 한 번만 실행합니다.
 - GUI 상단 카드는 `누적 조회 MAC`, `누적 삭제 완료`, `작업 상태`만 표시합니다.
 - `누적 조회 MAC`은 앱 실행 이후 조회된 중복 제거 삭제 대상 MAC의 작업 건수 누계입니다.
@@ -42,7 +76,6 @@ Aruba MM Cleanup은 Aruba Mobility Master/MM에서 `profiling` Role 사용자 MA
 - 최근 삭제 이력은 결과 폴더의 `deletion_history.jsonl`에 저장되고 프로그램 재시작 시 복원됩니다.
 - 최근 삭제 이력은 `이력 전체 지우기` 버튼으로 화면에서 지울 수 있습니다.
 - 로그창은 장시간 실행 중에도 최근 1000줄만 유지합니다.
-- CLI는 한 번 실행할 때 연결을 열고 조회/삭제/검증을 마친 뒤 연결을 닫습니다.
 - raw 장비 출력은 저장하지 않고 실행 요약 JSON에는 parser 선택/제외 reason만 저장합니다.
 - 실행 요약 JSON 저장에 실패해도 조회/삭제 결과는 UI에 표시하고 warning 로그를 남깁니다.
 
@@ -59,7 +92,7 @@ Windows 패키지 빌드:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\build_windows_gui_exe.ps1
-python .\tools\verify_release_package.py --dist .\dist --smoke-cli --smoke-gui
+python .\tools\verify_release_package.py --dist .\dist --smoke-gui --smoke-web
 ```
 
 macOS에서는 Windows EXE smoke test가 건너뛰어집니다. 최종 EXE 검증은 Windows 11 PC 또는 GitHub Actions Windows runner에서 수행해야 합니다.

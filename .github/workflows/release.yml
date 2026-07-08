@@ -67,11 +67,11 @@ jobs:
 
       - name: Build Windows release package
         shell: pwsh
-        run: powershell -NoProfile -ExecutionPolicy Bypass -File .\build_windows_gui_exe.ps1
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File .\build_windows_gui_exe.ps1 -ReleaseTag "${{ steps.metadata.outputs.tag }}"
 
       - name: Verify Windows release package
         shell: pwsh
-        run: python .\tools\verify_release_package.py --dist .\dist --smoke-cli --smoke-gui --require-cli-smoke --require-gui-smoke
+        run: python .\tools\verify_release_package.py --dist .\dist --smoke-gui --smoke-web --require-gui-smoke --require-web-smoke
 
       - name: Prepare release assets
         id: assets
@@ -79,28 +79,29 @@ jobs:
         run: |
           $assetDir = Join-Path $PWD "release_assets"
           New-Item -ItemType Directory -Force -Path $assetDir | Out-Null
-          $sourceZip = Get-ChildItem -Path ".\dist" -Filter "*.zip" |
-            Sort-Object LastWriteTime -Descending |
-            Select-Object -First 1
-          if (-not $sourceZip) {
-            throw "No release zip was generated in dist."
+          $assetName = "${{ steps.metadata.outputs.asset_name }}"
+          $sourceZip = Join-Path ".\dist" $assetName
+          if (-not (Test-Path -LiteralPath $sourceZip)) {
+            throw "Expected release zip was not generated: $sourceZip"
           }
 
-          $assetName = "${{ steps.metadata.outputs.asset_name }}"
           $assetPath = Join-Path $assetDir $assetName
-          Copy-Item -LiteralPath $sourceZip.FullName -Destination $assetPath -Force
+          Copy-Item -LiteralPath $sourceZip -Destination $assetPath -Force
+          $sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $assetPath).Hash.ToLowerInvariant()
 
           "asset_path=$assetPath" >> $env:GITHUB_OUTPUT
+          "sha256=$sha256" >> $env:GITHUB_OUTPUT
 
       - name: Verify release assets
         shell: pwsh
         run: |
           python .\tools\verify_release_package.py `
             --zip "${{ steps.assets.outputs.asset_path }}" `
-            --smoke-cli `
             --smoke-gui `
-            --require-cli-smoke `
-            --require-gui-smoke
+            --smoke-web `
+            --require-gui-smoke `
+            --require-web-smoke `
+            --expected-sha256 "${{ steps.assets.outputs.sha256 }}"
 
       - name: Create Korean release notes
         id: notes
@@ -109,6 +110,9 @@ jobs:
           $tag = "${{ steps.metadata.outputs.tag }}"
           $sha = "${{ github.sha }}"
           $before = "${{ github.event.before }}"
+          $branch = "${{ github.ref_name }}"
+          $assetName = "${{ steps.metadata.outputs.asset_name }}"
+          $sha256 = "${{ steps.assets.outputs.sha256 }}"
 
           if ($before -and $before -notmatch "^0+$") {
             $range = "$before..$sha"
@@ -118,10 +122,12 @@ jobs:
           }
 
           $changeSummary = New-Object System.Collections.Generic.List[string]
+          $commitList = New-Object System.Collections.Generic.List[string]
           foreach ($commitHash in $commitHashes) {
             if (-not $commitHash) { continue }
             $shortHash = git rev-parse --short $commitHash
             $subject = git log -1 --pretty=format:"%s" $commitHash
+            $commitList.Add("- $shortHash $subject")
             $body = git log -1 --pretty=format:"%b" $commitHash
             $releaseNote = ""
             foreach ($line in ($body -split "`r?`n")) {
@@ -142,7 +148,11 @@ jobs:
           if ($changeSummary.Count -eq 0) {
             $changeSummary.Add("- 변경 요약을 자동으로 찾지 못했습니다.")
           }
+          if ($commitList.Count -eq 0) {
+            $commitList.Add("- 커밋 목록을 자동으로 찾지 못했습니다.")
+          }
           $changeSummaryText = $changeSummary -join [Environment]::NewLine
+          $commitListText = $commitList -join [Environment]::NewLine
 
           $notesPath = Join-Path $PWD "release_notes.md"
           $notes = @"
@@ -150,6 +160,38 @@ jobs:
 
           ## 변경 내용
           $changeSummaryText
+
+          ## 변경 커밋 목록
+          $commitListText
+
+          ## 기준 정보
+          - 기준 커밋 SHA: $sha
+          - 브랜치명: $branch
+
+          ## 검증 명령
+          - powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\validate.ps1
+          - python .\tools\verify_release_package.py --dist .\dist --smoke-gui --smoke-web --require-gui-smoke --require-web-smoke
+          - python .\tools\verify_release_package.py --zip $assetName --smoke-gui --smoke-web --require-gui-smoke --require-web-smoke --expected-sha256 $sha256
+
+          ## 빌드 명령
+          - powershell -NoProfile -ExecutionPolicy Bypass -File .\build_windows_gui_exe.ps1 -ReleaseTag $tag
+
+          ## 첨부 파일
+          - 통합 ZIP 파일명: $assetName
+          - SHA256 checksum: $sha256
+          - 직접 업로드된 사용자 다운로드 파일은 위 통합 ZIP 1개입니다.
+          - GitHub가 자동으로 표시하는 Source code (zip), Source code (tar.gz)는 소스 아카이브이며 일반 사용자 실행 파일이 아닙니다.
+
+          ## GUI 실행 방법
+          1. $assetName 파일을 다운로드합니다.
+          2. ZIP 압축을 풉니다.
+          3. gui\ArubaMMCleanupGUI.exe 를 실행합니다.
+
+          ## 웹앱 실행 방법
+          1. $assetName 파일을 다운로드합니다.
+          2. ZIP 압축을 풉니다.
+          3. web\start_webapp.cmd 를 더블클릭합니다.
+          4. 포트를 바꾸려면 web 폴더에서 start_webapp.cmd --port 9876 형식으로 실행합니다.
           "@
           $notes = $notes -replace "(?m)^          ", ""
           $notes | Set-Content -LiteralPath $notesPath -Encoding UTF8

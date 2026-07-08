@@ -12,26 +12,36 @@ from aruba_mm_cleanup.cli import main as cli_main
 from tools.verify_release_package import (
     _find_latest_zip,
     _read_zip_names,
-    _smoke_cli_help,
     _smoke_gui,
+    _smoke_web,
     main as verifier_main,
 )
+
+
+RELEASE_ZIP_REQUIRED_FILES = [
+    "README_START_HERE_KO.txt",
+    "gui/ArubaMMCleanupGUI.exe",
+    "gui/USER_GUIDE_KO.md",
+    "gui/config/mock_scenarios/profiling_users.txt",
+    "web/ArubaMMCleanupWeb.exe",
+    "web/start_webapp.cmd",
+    "web/config/mock_scenarios/profiling_users.txt",
+]
+
+
+def write_release_zip(zip_path, extra_names=()):
+    with zipfile.ZipFile(zip_path, "w") as archive:
+        for name in RELEASE_ZIP_REQUIRED_FILES:
+            archive.writestr(name, "sample")
+        for name in extra_names:
+            archive.writestr(name, "sample")
 
 
 def test_release_zip_verifier_checks_required_files(tmp_path):
     repo_root = Path(__file__).parents[1]
     verifier = repo_root / "tools" / "verify_release_package.py"
-    zip_path = tmp_path / "ArubaMMCleanupGUI_v0.1.0.zip"
-    names = [
-        "ArubaMMCleanupGUI.exe",
-        "ArubaMMCleanupCLI.exe",
-        "README.md",
-        "USER_GUIDE_KO.md",
-        "config/mock_scenarios/profiling_users.txt",
-    ]
-    with zipfile.ZipFile(zip_path, "w") as archive:
-        for name in names:
-            archive.writestr(name, "sample")
+    zip_path = tmp_path / "aruba-mm-cleanup_v0.1.0_windows.zip"
+    write_release_zip(zip_path)
 
     completed = subprocess.run(
         [sys.executable, str(verifier), "--zip", str(zip_path)],
@@ -148,11 +158,8 @@ def test_release_zip_verifier_reports_zip_inspection_runtime_failure(tmp_path, m
 def test_release_zip_verifier_does_not_accept_directory_as_required_file(tmp_path):
     zip_path = tmp_path / "release.zip"
     with zipfile.ZipFile(zip_path, "w") as archive:
-        archive.writestr("ArubaMMCleanupGUI.exe/", "")
-        archive.writestr("ArubaMMCleanupCLI.exe", "sample")
-        archive.writestr("README.md", "sample")
-        archive.writestr("USER_GUIDE_KO.md", "sample")
-        archive.writestr("config/mock_scenarios/profiling_users.txt", "sample")
+        for name in RELEASE_ZIP_REQUIRED_FILES:
+            archive.writestr(f"{name}/" if name == "gui/ArubaMMCleanupGUI.exe" else name, "sample")
 
     with pytest.raises(SystemExit) as exc_info:
         verifier_main(["--zip", str(zip_path)])
@@ -163,13 +170,7 @@ def test_release_zip_verifier_does_not_accept_directory_as_required_file(tmp_pat
 
 def test_release_zip_verifier_reports_unsafe_zip_entry_paths(tmp_path):
     zip_path = tmp_path / "release.zip"
-    with zipfile.ZipFile(zip_path, "w") as archive:
-        archive.writestr("ArubaMMCleanupGUI.exe", "sample")
-        archive.writestr("ArubaMMCleanupCLI.exe", "sample")
-        archive.writestr("README.md", "sample")
-        archive.writestr("USER_GUIDE_KO.md", "sample")
-        archive.writestr("config/mock_scenarios/profiling_users.txt", "sample")
-        archive.writestr("../outside.txt", "bad")
+    write_release_zip(zip_path, extra_names=["../outside.txt"])
 
     with pytest.raises(SystemExit) as exc_info:
         verifier_main(["--zip", str(zip_path)])
@@ -178,51 +179,77 @@ def test_release_zip_verifier_reports_unsafe_zip_entry_paths(tmp_path):
     assert "../outside.txt" in str(exc_info.value)
 
 
-def test_release_zip_verifier_reports_cli_smoke_timeout(tmp_path, monkeypatch):
+def test_release_zip_verifier_rejects_cli_files(tmp_path):
     zip_path = tmp_path / "release.zip"
-    with zipfile.ZipFile(zip_path, "w") as archive:
-        archive.writestr("ArubaMMCleanupCLI.exe", "sample")
+    write_release_zip(zip_path, extra_names=["ArubaMMCleanupCLI.exe"])
+
+    with pytest.raises(SystemExit) as exc_info:
+        verifier_main(["--zip", str(zip_path)])
+
+    assert "must not include CLI files" in str(exc_info.value)
+    assert "ArubaMMCleanupCLI.exe" in str(exc_info.value)
+
+
+def test_release_zip_verifier_reports_sha256_mismatch(tmp_path):
+    zip_path = tmp_path / "release.zip"
+    write_release_zip(zip_path)
+
+    with pytest.raises(SystemExit) as exc_info:
+        verifier_main(["--zip", str(zip_path), "--expected-sha256", "0" * 64])
+
+    assert "SHA256 mismatch" in str(exc_info.value)
+
+
+def test_release_zip_verifier_accepts_matching_sha256(tmp_path):
+    import hashlib
+
+    zip_path = tmp_path / "release.zip"
+    write_release_zip(zip_path)
+    expected = hashlib.sha256(zip_path.read_bytes()).hexdigest()
+
+    assert verifier_main(["--zip", str(zip_path), "--expected-sha256", expected]) == 0
+
+
+def test_release_zip_verifier_reports_web_smoke_timeout(tmp_path, monkeypatch):
+    zip_path = tmp_path / "release.zip"
+    write_release_zip(zip_path)
 
     monkeypatch.setattr("tools.verify_release_package.platform.system", lambda: "Windows")
 
     def timeout_run(*_args, **_kwargs):
-        raise subprocess.TimeoutExpired(["ArubaMMCleanupCLI.exe", "--help"], 60)
+        raise subprocess.TimeoutExpired(["cmd", "/c", "start_webapp.cmd", "--smoke"], 60)
 
     monkeypatch.setattr("tools.verify_release_package.subprocess.run", timeout_run)
 
     with pytest.raises(SystemExit) as exc_info:
-        _smoke_cli_help(zip_path, require=True)
+        _smoke_web(zip_path, require=True)
 
-    assert "CLI smoke command timed out" in str(exc_info.value)
+    assert "Web app smoke command timed out" in str(exc_info.value)
 
 
-def test_cli_smoke_rejects_unsafe_zip_paths_before_extract(tmp_path, monkeypatch):
+def test_web_smoke_rejects_unsafe_zip_paths_before_extract(tmp_path, monkeypatch):
     zip_path = tmp_path / "release.zip"
-    with zipfile.ZipFile(zip_path, "w") as archive:
-        archive.writestr("ArubaMMCleanupCLI.exe", "sample")
-        archive.writestr("../outside.txt", "bad")
+    write_release_zip(zip_path, extra_names=["../outside.txt"])
 
     monkeypatch.setattr("tools.verify_release_package.platform.system", lambda: "Windows")
     monkeypatch.setattr(
         "tools.verify_release_package.subprocess.run",
-        lambda *_args, **_kwargs: subprocess.CompletedProcess([], 0, stdout="--host --role", stderr=""),
+        lambda *_args, **_kwargs: subprocess.CompletedProcess([], 0, stdout="webapp smoke ok", stderr=""),
     )
 
     with pytest.raises(SystemExit) as exc_info:
-        _smoke_cli_help(zip_path, require=True)
+        _smoke_web(zip_path, require=True)
 
     assert "Release ZIP contains unsafe paths" in str(exc_info.value)
     assert "../outside.txt" in str(exc_info.value)
 
 
-def test_cli_smoke_rechecks_unsafe_zip_paths_during_extract(tmp_path, monkeypatch):
+def test_web_smoke_rechecks_unsafe_zip_paths_during_extract(tmp_path, monkeypatch):
     zip_path = tmp_path / "release.zip"
-    with zipfile.ZipFile(zip_path, "w") as archive:
-        archive.writestr("ArubaMMCleanupCLI.exe", "sample")
-        archive.writestr("../outside.txt", "bad")
+    write_release_zip(zip_path, extra_names=["../outside.txt"])
 
     monkeypatch.setattr("tools.verify_release_package.platform.system", lambda: "Windows")
-    monkeypatch.setattr("tools.verify_release_package._read_zip_names", lambda _zip_path: {"ArubaMMCleanupCLI.exe"})
+    monkeypatch.setattr("tools.verify_release_package._read_zip_names", lambda _zip_path: {"web/start_webapp.cmd"})
 
     def fail_if_extractall_runs(self, _path):
         raise AssertionError("extractall should not run for unsafe paths")
@@ -230,16 +257,15 @@ def test_cli_smoke_rechecks_unsafe_zip_paths_during_extract(tmp_path, monkeypatc
     monkeypatch.setattr(zipfile.ZipFile, "extractall", fail_if_extractall_runs)
 
     with pytest.raises(SystemExit) as exc_info:
-        _smoke_cli_help(zip_path, require=True)
+        _smoke_web(zip_path, require=True)
 
-    assert "CLI smoke ZIP contains unsafe paths" in str(exc_info.value)
+    assert "Web app smoke ZIP contains unsafe paths" in str(exc_info.value)
     assert "../outside.txt" in str(exc_info.value)
 
 
-def test_release_zip_verifier_reports_cli_smoke_launch_failure(tmp_path, monkeypatch):
+def test_release_zip_verifier_reports_web_smoke_launch_failure(tmp_path, monkeypatch):
     zip_path = tmp_path / "release.zip"
-    with zipfile.ZipFile(zip_path, "w") as archive:
-        archive.writestr("ArubaMMCleanupCLI.exe", "sample")
+    write_release_zip(zip_path)
 
     monkeypatch.setattr("tools.verify_release_package.platform.system", lambda: "Windows")
 
@@ -249,15 +275,14 @@ def test_release_zip_verifier_reports_cli_smoke_launch_failure(tmp_path, monkeyp
     monkeypatch.setattr("tools.verify_release_package.subprocess.run", failing_run)
 
     with pytest.raises(SystemExit) as exc_info:
-        _smoke_cli_help(zip_path, require=True)
+        _smoke_web(zip_path, require=True)
 
-    assert "CLI smoke command could not start" in str(exc_info.value)
+    assert "Web app smoke command could not start" in str(exc_info.value)
 
 
 def test_release_zip_verifier_reports_gui_smoke_launch_failure(tmp_path, monkeypatch):
     zip_path = tmp_path / "release.zip"
-    with zipfile.ZipFile(zip_path, "w") as archive:
-        archive.writestr("ArubaMMCleanupGUI.exe", "sample")
+    write_release_zip(zip_path)
 
     monkeypatch.setattr("tools.verify_release_package.platform.system", lambda: "Windows")
 
@@ -274,8 +299,7 @@ def test_release_zip_verifier_reports_gui_smoke_launch_failure(tmp_path, monkeyp
 
 def test_release_zip_verifier_reports_gui_smoke_timeout(tmp_path, monkeypatch):
     zip_path = tmp_path / "release.zip"
-    with zipfile.ZipFile(zip_path, "w") as archive:
-        archive.writestr("ArubaMMCleanupGUI.exe", "sample")
+    write_release_zip(zip_path)
 
     monkeypatch.setattr("tools.verify_release_package.platform.system", lambda: "Windows")
 
@@ -290,10 +314,9 @@ def test_release_zip_verifier_reports_gui_smoke_timeout(tmp_path, monkeypatch):
     assert "GUI smoke command timed out" in str(exc_info.value)
 
 
-def test_release_zip_verifier_reports_cli_smoke_temp_directory_failure(tmp_path, monkeypatch):
+def test_release_zip_verifier_reports_web_smoke_temp_directory_failure(tmp_path, monkeypatch):
     zip_path = tmp_path / "release.zip"
-    with zipfile.ZipFile(zip_path, "w") as archive:
-        archive.writestr("ArubaMMCleanupCLI.exe", "sample")
+    write_release_zip(zip_path)
 
     monkeypatch.setattr("tools.verify_release_package.platform.system", lambda: "Windows")
     monkeypatch.setattr(
@@ -302,16 +325,15 @@ def test_release_zip_verifier_reports_cli_smoke_temp_directory_failure(tmp_path,
     )
 
     with pytest.raises(SystemExit) as exc_info:
-        _smoke_cli_help(zip_path, require=True)
+        _smoke_web(zip_path, require=True)
 
-    assert "CLI smoke temporary directory could not be created" in str(exc_info.value)
+    assert "Web app smoke temporary directory could not be created" in str(exc_info.value)
     assert "temp denied" in str(exc_info.value)
 
 
 def test_release_zip_verifier_reports_gui_smoke_temp_directory_failure(tmp_path, monkeypatch):
     zip_path = tmp_path / "release.zip"
-    with zipfile.ZipFile(zip_path, "w") as archive:
-        archive.writestr("ArubaMMCleanupGUI.exe", "sample")
+    write_release_zip(zip_path)
 
     monkeypatch.setattr("tools.verify_release_package.platform.system", lambda: "Windows")
     monkeypatch.setattr(
@@ -328,8 +350,7 @@ def test_release_zip_verifier_reports_gui_smoke_temp_directory_failure(tmp_path,
 
 def test_release_zip_verifier_reports_temp_directory_runtime_failure(tmp_path, monkeypatch):
     zip_path = tmp_path / "release.zip"
-    with zipfile.ZipFile(zip_path, "w") as archive:
-        archive.writestr("ArubaMMCleanupCLI.exe", "sample")
+    write_release_zip(zip_path)
 
     monkeypatch.setattr("tools.verify_release_package.platform.system", lambda: "Windows")
     monkeypatch.setattr(
@@ -338,16 +359,15 @@ def test_release_zip_verifier_reports_temp_directory_runtime_failure(tmp_path, m
     )
 
     with pytest.raises(SystemExit) as exc_info:
-        _smoke_cli_help(zip_path, require=True)
+        _smoke_web(zip_path, require=True)
 
-    assert "CLI smoke temporary directory could not be created" in str(exc_info.value)
+    assert "Web app smoke temporary directory could not be created" in str(exc_info.value)
     assert "temp runtime failure" in str(exc_info.value)
 
 
-def test_release_zip_verifier_ignores_cli_smoke_temp_cleanup_failure(tmp_path, monkeypatch):
+def test_release_zip_verifier_ignores_web_smoke_temp_cleanup_failure(tmp_path, monkeypatch):
     zip_path = tmp_path / "release.zip"
-    with zipfile.ZipFile(zip_path, "w") as archive:
-        archive.writestr("ArubaMMCleanupCLI.exe", "sample")
+    write_release_zip(zip_path)
 
     smoke_dir = tmp_path / "smoke"
     smoke_dir.mkdir()
@@ -365,16 +385,15 @@ def test_release_zip_verifier_ignores_cli_smoke_temp_cleanup_failure(tmp_path, m
     )
     monkeypatch.setattr(
         "tools.verify_release_package.subprocess.run",
-        lambda args, **kwargs: subprocess.CompletedProcess(args, 0, stdout="--host --role", stderr=""),
+        lambda args, **kwargs: subprocess.CompletedProcess(args, 0, stdout="webapp smoke ok", stderr=""),
     )
 
-    _smoke_cli_help(zip_path, require=True)
+    _smoke_web(zip_path, require=True)
 
 
 def test_release_zip_verifier_ignores_temp_cleanup_runtime_failure(tmp_path, monkeypatch):
     zip_path = tmp_path / "release.zip"
-    with zipfile.ZipFile(zip_path, "w") as archive:
-        archive.writestr("ArubaMMCleanupCLI.exe", "sample")
+    write_release_zip(zip_path)
 
     smoke_dir = tmp_path / "smoke"
     smoke_dir.mkdir()
@@ -392,18 +411,17 @@ def test_release_zip_verifier_ignores_temp_cleanup_runtime_failure(tmp_path, mon
     )
     monkeypatch.setattr(
         "tools.verify_release_package.subprocess.run",
-        lambda args, **kwargs: subprocess.CompletedProcess(args, 0, stdout="--host --role", stderr=""),
+        lambda args, **kwargs: subprocess.CompletedProcess(args, 0, stdout="webapp smoke ok", stderr=""),
     )
 
-    _smoke_cli_help(zip_path, require=True)
+    _smoke_web(zip_path, require=True)
 
 
 def test_release_zip_verifier_runs_gui_smoke_with_smoke_environment(tmp_path, monkeypatch):
     release_dir = tmp_path / "release package"
     release_dir.mkdir()
     zip_path = release_dir / "release.zip"
-    with zipfile.ZipFile(zip_path, "w") as archive:
-        archive.writestr("ArubaMMCleanupGUI.exe", "sample")
+    write_release_zip(zip_path)
 
     monkeypatch.setattr("tools.verify_release_package.platform.system", lambda: "Windows")
     captured = {}
@@ -418,13 +436,49 @@ def test_release_zip_verifier_runs_gui_smoke_with_smoke_environment(tmp_path, mo
     _smoke_gui(zip_path, require=True)
 
     assert Path(captured["args"][0]).name == "ArubaMMCleanupGUI.exe"
+    assert Path(captured["args"][0]).parent.name == "gui"
     assert captured["env"]["ARUBA_MM_CLEANUP_GUI_SMOKE"] == "1"
 
 
-def test_release_zip_verifier_reports_cli_smoke_extract_failure(tmp_path, monkeypatch):
+def test_release_zip_verifier_runs_web_smoke_script(tmp_path, monkeypatch):
     zip_path = tmp_path / "release.zip"
-    with zipfile.ZipFile(zip_path, "w") as archive:
-        archive.writestr("ArubaMMCleanupCLI.exe", "sample")
+    write_release_zip(zip_path)
+
+    monkeypatch.setattr("tools.verify_release_package.platform.system", lambda: "Windows")
+    captured = {}
+
+    def fake_run(args, **_kwargs):
+        captured["args"] = args
+        return subprocess.CompletedProcess(args, 0, stdout="webapp smoke ok", stderr="")
+
+    monkeypatch.setattr("tools.verify_release_package.subprocess.run", fake_run)
+
+    _smoke_web(zip_path, require=True)
+
+    assert captured["args"][:2] == ["cmd", "/c"]
+    assert Path(captured["args"][2]).name == "start_webapp.cmd"
+    assert captured["args"][3] == "--smoke"
+
+
+def test_release_zip_verifier_reports_web_smoke_missing_marker(tmp_path, monkeypatch):
+    zip_path = tmp_path / "release.zip"
+    write_release_zip(zip_path)
+
+    monkeypatch.setattr("tools.verify_release_package.platform.system", lambda: "Windows")
+    monkeypatch.setattr(
+        "tools.verify_release_package.subprocess.run",
+        lambda args, **_kwargs: subprocess.CompletedProcess(args, 0, stdout="different", stderr=""),
+    )
+
+    with pytest.raises(SystemExit) as exc_info:
+        _smoke_web(zip_path, require=True)
+
+    assert "Web app smoke output did not include expected marker" in str(exc_info.value)
+
+
+def test_release_zip_verifier_reports_web_smoke_extract_failure(tmp_path, monkeypatch):
+    zip_path = tmp_path / "release.zip"
+    write_release_zip(zip_path)
 
     monkeypatch.setattr("tools.verify_release_package.platform.system", lambda: "Windows")
 
@@ -434,15 +488,14 @@ def test_release_zip_verifier_reports_cli_smoke_extract_failure(tmp_path, monkey
     monkeypatch.setattr(zipfile.ZipFile, "extractall", failing_extractall)
 
     with pytest.raises(SystemExit) as exc_info:
-        _smoke_cli_help(zip_path, require=True)
+        _smoke_web(zip_path, require=True)
 
-    assert "CLI smoke ZIP extraction failed" in str(exc_info.value)
+    assert "Web app smoke ZIP extraction failed" in str(exc_info.value)
 
 
 def test_release_zip_verifier_reports_gui_smoke_extract_failure(tmp_path, monkeypatch):
     zip_path = tmp_path / "release.zip"
-    with zipfile.ZipFile(zip_path, "w") as archive:
-        archive.writestr("ArubaMMCleanupGUI.exe", "sample")
+    write_release_zip(zip_path)
 
     monkeypatch.setattr("tools.verify_release_package.platform.system", lambda: "Windows")
 
@@ -1187,7 +1240,7 @@ def test_cli_strips_role_before_running(monkeypatch):
     assert captured["role"] == "profiling"
 
 
-def test_windows_build_and_docs_reference_current_exe_names():
+def test_windows_build_and_docs_reference_gui_web_release_contract():
     repo_root = Path(__file__).parents[1]
     build_script = (repo_root / "build_windows_gui_exe.ps1").read_text(encoding="utf-8")
     readme = (repo_root / "README.md").read_text(encoding="utf-8")
@@ -1195,9 +1248,13 @@ def test_windows_build_and_docs_reference_current_exe_names():
 
     for text in (build_script, readme, release_notes):
         assert "ArubaMMCleanupGUI" in text
-        assert "ArubaMMCleanupCLI" in text
+        assert "ArubaMMCleanupWeb" in text
+        assert "ArubaMMCleanupCLI.exe" not in text
     assert "aruba-mm-cleanup_vYYYY.MM.DD-HHMMSS_windows.zip" in readme
-    assert "python .\\tools\\verify_release_package.py --dist .\\dist --smoke-cli --smoke-gui" in readme
+    assert "python .\\tools\\verify_release_package.py --dist .\\dist --smoke-gui --smoke-web" in readme
+    assert "README_START_HERE_KO.txt" in readme
+    assert "web\\start_webapp.cmd" in readme
+    assert "Source code (zip)" in readme
     assert '-c ".\\constraints.txt"' in build_script
     assert "-m pip check" in build_script
     assert "pip install failed with exit code $LASTEXITCODE" in build_script
@@ -1217,26 +1274,33 @@ def test_github_actions_release_contract():
     assert "Korea Standard Time" in release_workflow
     assert "yyyy.MM.dd-HHmmss" in release_workflow
     assert 'aruba-mm-cleanup_${candidate}_windows.zip' in release_workflow
-    assert "Get-FileHash -Algorithm SHA256" not in release_workflow
-    assert ".sha256" not in release_workflow
-    assert "--sha256" not in release_workflow
+    assert "Get-FileHash -Algorithm SHA256" in release_workflow
+    assert ".sha256" not in release_workflow.replace("outputs.sha256", "")
     assert "gh release create" in release_workflow
+    assert release_workflow.count("#${{ steps.metadata.outputs.asset_name }}") == 1
     assert '--title "Aruba MM Cleanup ${{ steps.metadata.outputs.tag }}"' in release_workflow
     assert "--draft=false" in release_workflow
     assert "# Aruba MM Cleanup $tag" in release_workflow
     assert "## 변경 내용" in release_workflow
+    assert "## 변경 커밋 목록" in release_workflow
+    assert "기준 커밋 SHA" in release_workflow
+    assert "브랜치명" in release_workflow
+    assert "## 검증 명령" in release_workflow
+    assert "## 빌드 명령" in release_workflow
+    assert "통합 ZIP 파일명" in release_workflow
+    assert "SHA256 checksum" in release_workflow
+    assert "## GUI 실행 방법" in release_workflow
+    assert "## 웹앱 실행 방법" in release_workflow
+    assert "Source code (zip)" in release_workflow
     assert 'git log --format="%H"' in release_workflow
     assert "Release-Note-KO:" in release_workflow
     assert "Korean release note is required" in release_workflow
     assert '$releaseNote -notmatch "[가-힣]"' in release_workflow
     assert '$changeSummary.Add("- $releaseNote ($shortHash)")' in release_workflow
     assert "CHANGELOG.md" not in release_workflow
-    assert "--smoke-cli --smoke-gui --require-cli-smoke --require-gui-smoke" in release_workflow
-    assert "## 검증" not in release_workflow
-    assert "## 첨부 파일" not in release_workflow
-    assert "- Windows ZIP: $assetName" not in release_workflow
-    assert "- GUI 실행 파일: ArubaMMCleanupGUI.exe" not in release_workflow
-    assert "- CLI 실행 파일: ArubaMMCleanupCLI.exe" not in release_workflow
+    assert "--smoke-gui --smoke-web --require-gui-smoke --require-web-smoke" in release_workflow
+    assert "--smoke-cli" not in release_workflow
+    assert "ArubaMMCleanupCLI.exe" not in release_workflow
     assert "세부 커밋 및 변경 파일" not in release_workflow
     assert "### 원본 커밋 목록" not in release_workflow
     assert "### 변경 파일" not in release_workflow
@@ -1258,6 +1322,8 @@ def test_package_metadata_versions_and_dependencies_do_not_drift():
     assert "netmiko>=4.3.0" in setup_cfg["options"]["install_requires"]
     assert '"pyinstaller>=6.0"' in pyproject
     assert "pyinstaller>=6.0" in setup_cfg["options.extras_require"]["dev"]
+    assert "aruba-mm-cleanup-web" in pyproject
+    assert "aruba-mm-cleanup-web" in setup_cfg["options.entry_points"]["console_scripts"]
     assert "netmiko==4.6.0" in constraints
     assert "pyinstaller==6.21.0" in constraints
     assert "pytest==8.4.2" in constraints

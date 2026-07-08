@@ -2,6 +2,11 @@
 
 ## 0.1.0
 
+- Windows 11 통합 ZIP에 GUI 실행 경로와 웹앱 실행 경로를 함께 제공합니다.
+- 웹앱은 `web\start_webapp.cmd`로 실행하며, PyInstaller 빌드 실행 파일을 사용해 Python/런타임 별도 설치 없이 실행할 수 있습니다.
+- GitHub Release 직접 업로드 asset은 `aruba-mm-cleanup_<tag>_windows.zip` 1개로 고정하고, SHA256 checksum은 Release notes 본문에 기록합니다.
+- 최종 사용자용 Release ZIP은 `README_START_HERE_KO.txt`, `gui/`, `web/` 구조를 사용합니다.
+- CLI 코드는 저장소에 유지하지만 최종 사용자용 Release ZIP에는 포함하지 않습니다.
 - Windows 11 GUI 대시보드에서 Aruba MM profiling Role MAC 조회와 삭제를 실행할 수 있습니다.
 - `show global-user-table list role <role>` 조회 후 `aaa user delete mac <mac>` 삭제 명령을 실행합니다.
 - 같은 MAC이 여러 줄에서 발견되어도 정규화된 MAC 기준으로 삭제 명령은 한 번만 실행합니다.
@@ -24,4 +29,4 @@
 - audit JSON 저장 실패는 warning으로 남기고 실행 결과는 UI에 계속 표시합니다.
 - 민감정보 제거된 Aruba 출력 fixture를 추가해 BSSID/AP MAC 오탐을 방지하는 parser 검증을 보강했습니다.
 - parser는 삭제 대상으로 선택하거나 제외한 row의 reason을 audit JSON에 남깁니다.
-- GitHub Actions에서 Windows ZIP 패키지를 빌드하고 CLI/GUI smoke, pip check, ZIP 필수 파일 검증 후 공개 Release로 자동 배포합니다.
+- GitHub Actions에서 Windows ZIP 패키지를 빌드하고 GUI/웹앱 smoke, pip check, ZIP 필수 파일 검증 후 공개 Release로 자동 배포합니다.

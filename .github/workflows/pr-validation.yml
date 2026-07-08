@@ -30,4 +30,4 @@ jobs:
 
       - name: Verify Windows release package
         shell: pwsh
-        run: python .\tools\verify_release_package.py --dist .\dist --smoke-cli --smoke-gui --require-cli-smoke --require-gui-smoke
+        run: python .\tools\verify_release_package.py --dist .\dist --smoke-gui --smoke-web --require-gui-smoke --require-web-smoke

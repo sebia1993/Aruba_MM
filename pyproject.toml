@@ -20,6 +20,7 @@ dev = [
 [project.scripts]
 aruba-mm-cleanup = "aruba_mm_cleanup.cli:main"
 aruba-mm-cleanup-gui = "aruba_mm_cleanup.gui_app:main"
+aruba-mm-cleanup-web = "aruba_mm_cleanup.web_app:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
